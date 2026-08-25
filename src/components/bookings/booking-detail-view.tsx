@@ -20,6 +20,9 @@ import { ServiceDetailDrawer } from "@/components/bookings/service-detail-drawer
 import { ServiceEditDialog } from "@/components/bookings/service-edit-dialog";
 import { ChargesDialog } from "@/components/bookings/charges-dialog";
 import { AttachmentsDialog } from "@/components/bookings/attachments-dialog";
+import { SendConfirmationDialog } from "@/components/bookings/send-confirmation-dialog";
+import { PaymentDialog } from "@/components/bookings/payment-dialog";
+import { InvoiceDialog } from "@/components/bookings/invoice-dialog";
 
 interface Props {
   booking: Booking;
@@ -41,6 +44,9 @@ export function BookingDetailView({ booking, role, demoExpiresOn }: Props) {
   const [chargesRow, setChargesRow] = useState<ServiceRow | null>(null);
   const [editRow, setEditRow] = useState<{ row: ServiceRow; focus: "supplier" | "extras" | null } | null>(null);
   const [filesFor, setFilesFor] = useState<{ row: ServiceRow | null } | null>(null);
+  const [sendOpen, setSendOpen] = useState(false);
+  const [payOpen, setPayOpen] = useState(false);
+  const [invoiceOpen, setInvoiceOpen] = useState(false);
 
   const rows = useMemo(() => toServiceRows(booking), [booking]);
   const pax = useMemo(() => numPaxOf(booking as never), [booking]);
@@ -48,8 +54,8 @@ export function BookingDetailView({ booking, role, demoExpiresOn }: Props) {
 
   const locked = isBookingLocked(booking);
   const lockReason = booking.invoice_id
-    ? `Invoice ${booking.invoice_number ?? ""} bana hua hai — pehle usse clear karo`
-    : "Booking completed/closed hai — pehle reopen karo";
+    ? `Invoice ${booking.invoice_number ?? ""} already exists — clear it first`
+    : "This booking is completed or closed — reopen it first";
 
   async function run(body: Record<string, unknown>, key: string) {
     setBusy(key);
@@ -65,7 +71,7 @@ export function BookingDetailView({ booking, role, demoExpiresOn }: Props) {
       if (json.redirect) router.push(json.redirect as string);
       else router.refresh();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Kuch galat ho gaya");
+      setError(e instanceof Error ? e.message : "Something went wrong");
     } finally {
       setBusy(null);
     }
@@ -80,7 +86,7 @@ export function BookingDetailView({ booking, role, demoExpiresOn }: Props) {
       key: "send-confirmation",
       label: "Send confirmation",
       hidden: !can(role, ["sales", "operations"]),
-      onSelect: () => run({ action: "send_confirmation" }, "send-confirmation"),
+      onSelect: () => setSendOpen(true),
     },
     {
       key: "print-confirmation",
@@ -92,7 +98,7 @@ export function BookingDetailView({ booking, role, demoExpiresOn }: Props) {
       label: "Confirm all services",
       hidden: !can(role, ["operations"]),
       disabled: locked || rows.length === 0,
-      reason: rows.length === 0 ? "Abhi koi service add nahi hui" : lockReason,
+      reason: rows.length === 0 ? "No services have been added yet" : lockReason,
       onSelect: () => run({ action: "confirm_all" }, "confirm-all"),
     },
     {
@@ -111,14 +117,14 @@ export function BookingDetailView({ booking, role, demoExpiresOn }: Props) {
     },
     {
       key: "export",
-      label: "Export services",
+      label: "Export services (CSV)",
       onSelect: () => openPrint(`/api/bookings/${booking.id}/export`),
     },
     {
       key: "advance",
       label: "Add advance payment receipt",
       hidden: !can(role, ["accounts"]),
-      onSelect: () => go(`/payments/new?booking=${booking.id}&type=customer`),
+      onSelect: () => setPayOpen(true),
     },
     {
       key: "briefing",
@@ -127,12 +133,48 @@ export function BookingDetailView({ booking, role, demoExpiresOn }: Props) {
       onSelect: () => openPrint(`/bookings/${booking.id}/print/briefing`),
     },
     {
+      key: "lock-rates",
+      label: booking.rates_locked ? "Unlock rates" : "Lock rates",
+      hidden: !can(role, ["operations"]),
+      separatorBefore: true,
+      onSelect: () =>
+        run({ action: booking.rates_locked ? "unlock_rates" : "lock_rates" }, "lock"),
+    },
+    {
+      key: "close-booking",
+      label: "Close booking",
+      hidden: !can(role, ["operations", "accounts"]),
+      disabled: locked,
+      reason: lockReason,
+      onSelect: () => {
+        if (confirm("Close this booking? It cannot be edited afterwards (an admin can reopen it)."))
+          run({ action: "close_booking" }, "close");
+      },
+    },
+    {
+      key: "duplicate",
+      label: "Duplicate booking",
+      hidden: !can(role, ["sales", "operations"]),
+      separatorBefore: true,
+      onSelect: () => {
+        if (confirm("Create a new booking with the same customer and services?"))
+          run({ action: "duplicate_booking" }, "duplicate");
+      },
+    },
+    {
+      key: "reopen",
+      label: "Reopen booking",
+      hidden: !can(role, []),
+      disabled: !locked,
+      reason: "This booking is already open",
+      onSelect: () => run({ action: "reopen_booking" }, "reopen"),
+    },
+    {
       key: "invoice",
       label: booking.invoice_id ? "View invoice" : "Generate invoice",
       hidden: !can(role, ["accounts"]),
       separatorBefore: true,
-      onSelect: () =>
-        booking.invoice_id ? go(`/invoices/${booking.invoice_id}`) : go(`/invoices/new?booking=${booking.id}`),
+      onSelect: () => (booking.invoice_id ? go(`/invoices/${booking.invoice_id}`) : setInvoiceOpen(true)),
     },
     {
       key: "delete",
@@ -141,9 +183,9 @@ export function BookingDetailView({ booking, role, demoExpiresOn }: Props) {
       danger: true,
       separatorBefore: true,
       disabled: !!booking.invoice_id,
-      reason: "Invoice attached hai — pehle invoice delete karo",
+      reason: "An invoice is attached — delete the invoice first",
       onSelect: () => {
-        if (confirm(`Booking ${booking.booking_number} delete kar dein? Ye wapas nahi aayegi.`))
+        if (confirm(`Booking ${booking.booking_number} — delete it? This cannot be undone.`))
           run({ action: "delete_booking" }, "delete");
       },
     },
@@ -165,7 +207,7 @@ export function BookingDetailView({ booking, role, demoExpiresOn }: Props) {
         label: confirmed ? "Unconfirm service" : "Confirm service",
         hidden: !can(role, ["operations"]),
         disabled: locked || cancelled,
-        reason: cancelled ? "Ye service cancel ho chuki hai" : lockReason,
+        reason: cancelled ? "This service has been cancelled" : lockReason,
         onSelect: () =>
           run({ action: confirmed ? "unconfirm_service" : "confirm_service", rowId: row.rowId }, `c-${row.rowId}`),
       },
@@ -175,7 +217,7 @@ export function BookingDetailView({ booking, role, demoExpiresOn }: Props) {
         label: row.kind === "flight" ? "Edit flight" : row.kind === "hotel" ? "Edit hotel" : "Edit service",
         hidden: !can(role, ["sales", "operations"]),
         disabled: locked || cancelled,
-        reason: cancelled ? "Cancelled service edit nahi hoti" : lockReason,
+        reason: cancelled ? "A cancelled service cannot be edited" : lockReason,
         onSelect: () => setEditRow({ row, focus: null }),
       },
       {
@@ -197,7 +239,7 @@ export function BookingDetailView({ booking, role, demoExpiresOn }: Props) {
         hidden: !can(role, ["operations"]),
         separatorBefore: true,
         disabled: locked || cancelled,
-        reason: cancelled ? "Cancelled service ko supplier nahi lagta" : lockReason,
+        reason: cancelled ? "A cancelled service cannot be assigned a supplier" : lockReason,
         onSelect: () => setEditRow({ row, focus: "supplier" }),
       },
       {
@@ -205,7 +247,7 @@ export function BookingDetailView({ booking, role, demoExpiresOn }: Props) {
         label: "Send to supplier",
         hidden: !can(role, ["operations"]),
         disabled: !row.supplierName || cancelled,
-        reason: "Pehle supplier assign karo",
+        reason: "Assign a supplier first",
         onSelect: () => run({ action: "request_supplier", rowId: row.rowId }, `r-${row.rowId}`),
       },
       {
@@ -230,7 +272,7 @@ export function BookingDetailView({ booking, role, demoExpiresOn }: Props) {
         disabled: locked || cancelled,
         reason: cancelled ? "Already cancelled" : lockReason,
         onSelect: () => {
-          if (confirm(`"${row.title}" cancel kar dein?`))
+          if (confirm(`"${row.title}" — cancel this service?`))
             run({ action: "cancel_service", rowId: row.rowId }, `x-${row.rowId}`);
         },
       },
@@ -251,7 +293,6 @@ export function BookingDetailView({ booking, role, demoExpiresOn }: Props) {
       )}
 
       <div className="mx-auto max-w-[1400px] px-4 py-4 sm:px-6">
-        {/* Header */}
         <div className="flex flex-wrap items-center gap-3">
           <button
             type="button"
@@ -296,7 +337,6 @@ export function BookingDetailView({ booking, role, demoExpiresOn }: Props) {
           </div>
         </div>
 
-        {/* Summary */}
         <div className="mt-3 flex flex-wrap gap-x-8 gap-y-1 border-t border-slate-200 pt-3 text-sm text-slate-500">
           <span>
             Customer: <span className="text-slate-800">{booking.customer_snapshot?.name ?? "—"}</span>
@@ -322,7 +362,6 @@ export function BookingDetailView({ booking, role, demoExpiresOn }: Props) {
           <p className="mt-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
         )}
 
-        {/* Services table */}
         <div className="mt-4 overflow-x-auto">
           <table className="w-full min-w-[1200px] border-collapse text-[15px]">
             <thead>
@@ -345,9 +384,9 @@ export function BookingDetailView({ booking, role, demoExpiresOn }: Props) {
               {rows.length === 0 && (
                 <tr>
                   <td colSpan={12} className="py-14 text-center text-slate-500">
-                    Is booking me abhi koi service nahi hai.{" "}
+                    This booking has no services yet.{" "}
                     <Link href={`/bookings/${booking.id}/edit`} className="text-blue-600 hover:underline">
-                      Hotel ya flight add karo
+                      add a hotel or flight
                     </Link>
                     .
                   </td>
@@ -438,7 +477,6 @@ export function BookingDetailView({ booking, role, demoExpiresOn }: Props) {
 
         {busy && <p className="mt-3 text-sm text-slate-500">Working…</p>}
 
-        {/* Financial summary */}
         {fin && (
           <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
             <div className="rounded-lg border border-slate-200 p-3">
@@ -464,7 +502,6 @@ export function BookingDetailView({ booking, role, demoExpiresOn }: Props) {
           </div>
         )}
 
-        {/* Activity log */}
         <div className="mt-6 border-t border-slate-200 pt-4">
           <button
             type="button"
@@ -478,7 +515,7 @@ export function BookingDetailView({ booking, role, demoExpiresOn }: Props) {
           {showLogs && (
             <ol className="mt-3 space-y-2 border-l border-slate-200 pl-4 text-sm">
               {(booking.timeline ?? []).length === 0 && (
-                <li className="text-slate-500">Abhi koi activity record nahi hui.</li>
+                <li className="text-slate-500">No activity recorded yet.</li>
               )}
               {[...(booking.timeline ?? [])].reverse().map((t, i) => (
                 <li key={`${t.at}-${i}`} className="text-slate-600">
@@ -538,6 +575,29 @@ export function BookingDetailView({ booking, role, demoExpiresOn }: Props) {
           onClose={() => setFilesFor(null)}
           onChanged={() => router.refresh()}
         />
+      )}
+
+      {sendOpen && (
+        <SendConfirmationDialog
+          bookingId={booking.id}
+          onClose={() => setSendOpen(false)}
+          onSent={() => router.refresh()}
+        />
+      )}
+
+      {invoiceOpen && (
+        <InvoiceDialog
+          bookingId={booking.id}
+          onClose={() => setInvoiceOpen(false)}
+          onCreated={(redirect) => {
+            setInvoiceOpen(false);
+            router.push(redirect);
+          }}
+        />
+      )}
+
+      {payOpen && (
+        <PaymentDialog bookingId={booking.id} onClose={() => setPayOpen(false)} onSaved={() => router.refresh()} />
       )}
     </div>
   );

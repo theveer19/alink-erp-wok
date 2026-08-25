@@ -71,7 +71,7 @@ export function ServiceEditDialog({
   row: ServiceRow;
   role: Role;
   numPax: number;
-  /** "supplier" ya "extras" — dialog khulte hi wahi section highlight hota hai. */
+  /** "supplier" or "extras" — highlights that section when the dialog opens. */
   focus?: "supplier" | "extras" | null;
   onClose: () => void;
   onSave: (fields: Record<string, unknown>) => void | Promise<void>;
@@ -100,7 +100,7 @@ export function ServiceEditDialog({
 
   const set = (k: string, v: unknown) => setDraft((d) => ({ ...d, [k]: v }));
 
-  // Live preview — wahi function jo server par chalta hai, isliye number match karta hai.
+  // Live preview using the same function the server runs, so the numbers match.
   const preview = useMemo(() => recomputeService(draft, numPax), [draft, numPax]);
 
   const input = (f: F) => {
@@ -177,7 +177,7 @@ export function ServiceEditDialog({
                     }}
                     className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
                   >
-                    <option value="">— Supplier chuno —</option>
+                    <option value="">— Select a supplier —</option>
                     {suppliers.map((s) => (
                       <option key={s.id} value={s.id}>
                         {s.name}
@@ -200,7 +200,7 @@ export function ServiceEditDialog({
                   </label>
                 ))}
                 <p className="text-xs text-slate-400 sm:col-span-2">
-                  Charges dialog se add kiye gaye supplier charges apne aap "Other charges" me jud jaate hain.
+                  Supplier charges added in the Charges dialog roll up into "Other charges" automatically.
                 </p>
               </div>,
             )}

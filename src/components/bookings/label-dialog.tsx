@@ -4,7 +4,7 @@ import { useState } from "react";
 import { X } from "lucide-react";
 import type { ServiceRow } from "@/lib/booking-actions";
 
-/** Operations team jo tags roz use karti hai. Tenant settings me move kar sakte ho. */
+/** Tags the operations team uses daily. Can be moved to tenant settings later. */
 const SUGGESTED = [
   "VIP",
   "Urgent",
@@ -76,7 +76,7 @@ export function LabelDialog({
             value={custom}
             onChange={(e) => setCustom(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && addCustom()}
-            placeholder="Naya label likho"
+            placeholder="New label"
             className="flex-1 rounded border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
           />
           <button

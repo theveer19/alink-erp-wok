@@ -57,12 +57,12 @@ export function ServiceDetailDrawer({
               </dd>
             </div>
           ))}
-          {entries.length === 0 && <p className="py-4 text-sm text-slate-500">Is service me abhi details nahi bhari.</p>}
+          {entries.length === 0 && <p className="py-4 text-sm text-slate-500">No details captured for this service yet.</p>}
         </dl>
 
         {salesBlind && (
           <p className="mt-4 rounded bg-slate-50 px-3 py-2 text-xs text-slate-500">
-            Supplier cost aur profit sirf operations, accounts aur admin ko dikhte hain.
+            Supplier cost and profit are visible to operations, accounts and admin only.
           </p>
         )}
       </aside>

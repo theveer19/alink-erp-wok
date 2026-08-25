@@ -139,7 +139,7 @@ export default async function PrintDocPage({
         </h2>
         {rows.length === 0 ? (
           <p className="rounded border border-dashed border-slate-300 py-6 text-center text-sm text-slate-500">
-            Is document ke liye koi service nahi mili.
+            No services found for this document.
           </p>
         ) : (
           rows.map((r) => <ServiceBlock key={r.rowId} row={r} showCost={showCost} />)
@@ -177,10 +177,10 @@ export default async function PrintDocPage({
 
       <footer className="mt-8 border-t border-slate-200 pt-3 text-center text-xs text-slate-400">
         {doc === "confirmation"
-          ? "Ye ek computer generated confirmation hai."
+          ? "This is a computer generated confirmation."
           : doc === "briefing"
-            ? "Internal use only — customer ko na dein."
-            : "Kripya check-in ke waqt ye document saath rakhein."}
+            ? "Internal use only — do not share with the customer."
+            : "Please carry this document at check-in."}
       </footer>
     </PrintShell>
   );

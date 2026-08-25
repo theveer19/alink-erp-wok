@@ -36,7 +36,7 @@ export function AttachmentsDialog({
   onChanged,
 }: {
   bookingId: string;
-  /** null = poori booking ke documents; row diya to sirf us service ke. */
+  /** null = documents for the whole booking; pass a row for one service only. */
   row: ServiceRow | null;
   role: Role;
   onClose: () => void;
@@ -60,11 +60,11 @@ export function AttachmentsDialog({
     try {
       const res = await fetch(`/api/bookings/${bookingId}/files`);
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? "Files load nahi hui");
+      if (!res.ok) throw new Error(json.error ?? "Could not load files");
       const all = (json.files ?? []) as FileRow[];
       setFiles(row ? all.filter((f) => f.ref === row.rowId) : all);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Kuch galat ho gaya");
+      setError(e instanceof Error ? e.message : "Something went wrong");
     } finally {
       setLoading(false);
     }
@@ -99,7 +99,7 @@ export function AttachmentsDialog({
   }
 
   async function remove(fileId: string) {
-    if (!confirm("Ye file delete kar dein?")) return;
+    if (!confirm("Delete this file?")) return;
     setBusy(true);
     try {
       const res = await fetch(`/api/bookings/${bookingId}/files`, {
@@ -126,7 +126,7 @@ export function AttachmentsDialog({
             <h2 className="text-lg font-semibold text-slate-800">
               {row ? "Bills & documents" : "Booking documents"}
             </h2>
-            <p className="text-sm text-slate-500">{row ? row.title : "Poori booking ke files"}</p>
+            <p className="text-sm text-slate-500">{row ? row.title : "Files for the whole booking"}</p>
           </div>
           <button type="button" onClick={onClose} aria-label="Close" className="rounded p-1 hover:bg-slate-100">
             <X className="h-5 w-5 text-slate-500" />
@@ -191,7 +191,7 @@ export function AttachmentsDialog({
           {loading && <p className="text-sm text-slate-500">Loading…</p>}
           {!loading && files.length === 0 && (
             <p className="rounded border border-dashed border-slate-300 py-8 text-center text-sm text-slate-500">
-              Abhi koi file upload nahi hui.
+              No files uploaded yet.
             </p>
           )}
 

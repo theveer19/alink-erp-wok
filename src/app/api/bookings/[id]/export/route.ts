@@ -13,7 +13,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   try {
     const { id } = params;
     const { profile, supabase } = await getSessionProfile();
-    if (!profile) throw new HttpError(401, "Login karo");
+    if (!profile) throw new HttpError(401, "Please sign in");
 
     const booking = (await getBookingOr404(supabase, id)) as Booking;
     const rows = toServiceRows(booking);
@@ -60,7 +60,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
       lines.push(cells.map(esc).join(","));
     }
 
-    // BOM taaki Excel me Hindi/₹ theek dikhe.
+    // BOM so Excel renders ₹ and non-ASCII correctly.
     const csv = "\uFEFF" + lines.join("\r\n");
 
     return new Response(csv, {

@@ -1,39 +1,81 @@
-import { createClient } from "@/lib/supabase/server";
+import { redirect } from "next/navigation";
+import { getSessionProfile } from "@/lib/auth";
+import { computeFinancials } from "@/lib/bookings";
+import { dayOffset, getServiceFeed } from "@/lib/service-feed";
+import { DashboardView } from "@/components/dashboard/dashboard-view";
+import type { Booking } from "@/lib/types";
+
+export const dynamic = "force-dynamic";
+
+const num = (v: unknown) => Number(v || 0);
 
 export default async function DashboardPage() {
-  const supabase = createClient();
+  const { user, profile, supabase } = await getSessionProfile();
+  if (!user || !profile) redirect("/login");
 
-  // Skeleton check: these read through RLS (only this tenant's rows).
-  const [{ count: bookings }, { count: customers }, { count: suppliers }] = await Promise.all([
-    supabase.from("bookings").select("*", { count: "exact", head: true }),
-    supabase.from("customers").select("*", { count: "exact", head: true }),
-    supabase.from("suppliers").select("*", { count: "exact", head: true }),
-  ]);
+  const [{ data: bookings }, { data: invoices }, { count: customers }, { count: suppliers }] =
+    await Promise.all([
+      supabase.from("bookings").select("*").order("created_at", { ascending: false }).limit(1000),
+      supabase.from("invoices").select("grand_total, amount_received, balance_due, status").limit(1000),
+      supabase.from("customers").select("id", { count: "exact", head: true }),
+      supabase.from("suppliers").select("id", { count: "exact", head: true }),
+    ]);
 
-  const cards = [
-    ["Total Bookings", bookings ?? 0],
-    ["Customers", customers ?? 0],
-    ["Suppliers", suppliers ?? 0],
-  ] as const;
+  const list = (bookings ?? []) as Booking[];
+  const today = dayOffset(0);
+
+  const feed = await getServiceFeed(supabase, { from: today, to: dayOffset(7) });
+  const todays = feed.filter((r) => r.date === today);
+
+  const open = list.filter((b) => !["Closed", "Cancelled"].includes(b.status));
+  const totals = list.reduce(
+    (acc, b) => {
+      const f = computeFinancials(b as never);
+      acc.sales += num(f.total_sales);
+      acc.cost += num(f.total_supplier_cost);
+      acc.profit += num(f.gross_profit);
+      return acc;
+    },
+    { sales: 0, cost: 0, profit: 0 },
+  );
+
+  const receivable = (invoices ?? []).reduce((a, i) => a + num(i.balance_due), 0);
+
+  const statusCounts: Record<string, number> = {};
+  for (const b of list) statusCounts[b.status] = (statusCounts[b.status] ?? 0) + 1;
+
+  const recent = list.slice(0, 8).map((b) => ({
+    id: b.id,
+    number: b.booking_number,
+    customer: b.customer_snapshot?.name ?? "—",
+    destination: b.destination ?? "—",
+    travel: (b.travel_start_date ?? "").slice(0, 10),
+    status: b.status,
+    total: computeFinancials(b as never).total_sales,
+  }));
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="font-heading text-2xl font-bold text-slate-900">Dashboard</h1>
-        <p className="text-sm text-slate-500">Foundation is live. Modules land in the next phases.</p>
-      </div>
-      <div className="grid sm:grid-cols-3 gap-4">
-        {cards.map(([label, value]) => (
-          <div key={label} className="rounded-lg border border-slate-200 bg-white p-5">
-            <div className="text-xs font-semibold tracking-wider text-slate-500 uppercase">{label}</div>
-            <div className="text-2xl font-bold text-slate-900 tnum font-heading mt-1">{value}</div>
-          </div>
-        ))}
-      </div>
-      <div className="rounded-lg border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">
-        Phase A skeleton — auth, multi-tenant RLS and app shell working.
-        Bookings, invoices, payments and reports arrive in Phase C.
-      </div>
-    </div>
+    <DashboardView
+      role={profile.role}
+      userName={profile.name}
+      kpis={{
+        totalBookings: list.length,
+        openBookings: open.length,
+        customers: customers ?? 0,
+        suppliers: suppliers ?? 0,
+        sales: totals.sales,
+        cost: totals.cost,
+        profit: totals.profit,
+        receivable,
+        todayCount: todays.length,
+        weekCount: feed.length,
+        unassigned: feed.filter((r) => !r.supplier && r.status !== "Cancelled").length,
+        unconfirmed: feed.filter((r) => r.status === "Pending").length,
+      }}
+      today={todays}
+      week={feed.slice(0, 10)}
+      recent={recent}
+      statusCounts={statusCounts}
+    />
   );
 }

@@ -1,0 +1,246 @@
+"use client";
+
+import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { ChevronLeft, Printer, Trash2 } from "lucide-react";
+import { can } from "@/lib/booking-actions";
+import type { Invoice, Role } from "@/lib/types";
+
+const inr = (n: unknown) => `₹${Number(n ?? 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
+
+interface PaymentRow {
+  id: string;
+  amount: number;
+  mode: string | null;
+  reference: string | null;
+  date: string | null;
+  recorded_by: string | null;
+  type: string;
+}
+
+export function InvoiceDetailView({ invoice, role }: { invoice: Invoice; role: Role }) {
+  const router = useRouter();
+  const [payments, setPayments] = useState<PaymentRow[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    if (!invoice.booking_id) return;
+    try {
+      const res = await fetch(`/api/bookings/${invoice.booking_id}/payments`);
+      const j = await res.json();
+      if (res.ok) setPayments((j.payments ?? []).filter((p: PaymentRow) => p.type === "customer"));
+    } catch {
+      /* payments are optional */
+    }
+  }, [invoice.booking_id]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  async function cancelInvoice() {
+    if (!invoice.booking_id) return;
+    if (!confirm(`Invoice ${invoice.invoice_number} — remove this? The booking will become editable again.`)) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/bookings/${invoice.booking_id}/invoice`, { method: "DELETE" });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j.error ?? "Delete fail");
+      router.push(`/bookings/${invoice.booking_id}`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Delete fail");
+      setBusy(false);
+    }
+  }
+
+  const statusColor =
+    invoice.status === "Paid"
+      ? "bg-emerald-100 text-emerald-700"
+      : invoice.status === "Partially Paid"
+        ? "bg-amber-100 text-amber-700"
+        : "bg-slate-100 text-slate-600";
+
+  return (
+    <div className="min-h-screen bg-white">
+      <style>{`
+        @media print {
+          .no-print { display: none !important; }
+          @page { margin: 14mm; size: A4; }
+        }
+      `}</style>
+
+      <div className="mx-auto max-w-4xl px-4 py-5 sm:px-6">
+        <div className="no-print mb-5 flex flex-wrap items-center gap-3">
+          <Link
+            href="/invoices"
+            aria-label="Back"
+            className="rounded-full p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+          >
+            <ChevronLeft className="h-6 w-6" />
+          </Link>
+          <h1 className="text-xl font-semibold text-slate-800">Invoice {invoice.invoice_number}</h1>
+          <span className={`rounded-full px-3 py-1 text-xs font-semibold ${statusColor}`}>{invoice.status}</span>
+
+          <div className="ml-auto flex gap-2">
+            {invoice.booking_id && (
+              <Link
+                href={`/bookings/${invoice.booking_id}`}
+                className="rounded border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+              >
+                Open booking
+              </Link>
+            )}
+            <button
+              type="button"
+              onClick={() => window.print()}
+              className="inline-flex items-center gap-2 rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+            >
+              <Printer className="h-4 w-4" /> Print / PDF
+            </button>
+            {can(role, ["accounts"]) && (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={cancelInvoice}
+                className="inline-flex items-center gap-2 rounded border border-red-200 px-3 py-2 text-sm text-red-600 hover:bg-red-50 disabled:opacity-50"
+              >
+                <Trash2 className="h-4 w-4" /> Delete
+              </button>
+            )}
+          </div>
+        </div>
+
+        {error && (
+          <p className="no-print mb-4 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            {error}
+          </p>
+        )}
+
+        {/* ---------- printable invoice ---------- */}
+        <div className="rounded-lg border border-slate-200 p-8 print:border-0 print:p-0">
+          <header className="mb-6 flex items-start justify-between border-b-2 border-slate-800 pb-3">
+            <div>
+              <h2 className="text-2xl font-bold uppercase tracking-wide text-slate-800">Tax Invoice</h2>
+              <p className="text-sm text-slate-500">{invoice.invoice_number}</p>
+            </div>
+            <div className="text-right text-sm text-slate-600">
+              <p>Date: {String(invoice.invoice_date ?? "").slice(0, 10)}</p>
+              {invoice.booking_number && <p>Booking: {invoice.booking_number}</p>}
+            </div>
+          </header>
+
+          <section className="mb-6">
+            <h3 className="mb-1 text-xs font-bold uppercase tracking-wide text-slate-400">Bill to</h3>
+            <p className="font-semibold text-slate-800">{invoice.customer?.name ?? "—"}</p>
+            {invoice.customer?.company && <p className="text-sm text-slate-600">{invoice.customer.company}</p>}
+            {invoice.customer?.address && <p className="text-sm text-slate-600">{invoice.customer.address}</p>}
+            {invoice.customer?.mobile && <p className="text-sm text-slate-600">{invoice.customer.mobile}</p>}
+            {invoice.customer?.gst_number && (
+              <p className="text-sm text-slate-600">GSTIN: {invoice.customer.gst_number}</p>
+            )}
+          </section>
+
+          <table className="w-full border-collapse text-sm">
+            <thead>
+              <tr className="border-y border-slate-200 text-left">
+                <th className="py-2 font-semibold text-slate-600">Description</th>
+                <th className="w-16 py-2 text-right font-semibold text-slate-600">Qty</th>
+                <th className="w-28 py-2 text-right font-semibold text-slate-600">Rate</th>
+                <th className="w-28 py-2 text-right font-semibold text-slate-600">Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(invoice.items ?? []).map((it, i) => (
+                <tr key={i} className="border-b border-slate-100">
+                  <td className="py-2 pr-2 text-slate-700">{it.description}</td>
+                  <td className="py-2 text-right text-slate-600">{it.qty}</td>
+                  <td className="py-2 text-right text-slate-600">{inr(it.rate)}</td>
+                  <td className="py-2 text-right font-medium text-slate-800">{inr(it.amount)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          <div className="mt-4 ml-auto w-72 text-sm">
+            <div className="flex justify-between py-1">
+              <span className="text-slate-500">Subtotal</span>
+              <span className="text-slate-800">{inr(invoice.subtotal)}</span>
+            </div>
+            {Number(invoice.discount) > 0 && (
+              <div className="flex justify-between py-1">
+                <span className="text-slate-500">Discount</span>
+                <span className="text-slate-800">− {inr(invoice.discount)}</span>
+              </div>
+            )}
+            <div className="flex justify-between py-1">
+              <span className="text-slate-500">
+                GST @ {invoice.tax_rate}%{invoice.gst_basis === "service_charge" ? " (service charge)" : ""}
+              </span>
+              <span className="text-slate-800">{inr(invoice.tax_amount)}</span>
+            </div>
+            <div className="flex justify-between border-t border-slate-300 py-2 text-base">
+              <span className="font-semibold text-slate-700">Grand total</span>
+              <span className="font-bold text-slate-900">{inr(invoice.grand_total)}</span>
+            </div>
+            <div className="flex justify-between py-1">
+              <span className="text-slate-500">Received</span>
+              <span className="text-emerald-700">{inr(invoice.amount_received)}</span>
+            </div>
+            <div className="flex justify-between py-1">
+              <span className="text-slate-500">Balance due</span>
+              <span className="font-semibold text-slate-900">{inr(invoice.balance_due)}</span>
+            </div>
+          </div>
+
+          {invoice.notes && (
+            <section className="mt-6">
+              <h3 className="mb-1 text-xs font-bold uppercase tracking-wide text-slate-400">Notes</h3>
+              <p className="text-sm text-slate-700">{invoice.notes}</p>
+            </section>
+          )}
+          {invoice.terms && (
+            <section className="mt-3">
+              <h3 className="mb-1 text-xs font-bold uppercase tracking-wide text-slate-400">Terms</h3>
+              <p className="text-sm text-slate-700">{invoice.terms}</p>
+            </section>
+          )}
+
+          <footer className="mt-10 border-t border-slate-200 pt-3 text-center text-xs text-slate-400">
+            This is a computer generated invoice.
+          </footer>
+        </div>
+
+        {/* ---------- payments (screen only) ---------- */}
+        <div className="no-print mt-6 rounded-lg border border-slate-200 p-4">
+          <h3 className="mb-3 text-sm font-semibold text-slate-700">Payments received</h3>
+          {payments.length === 0 ? (
+            <p className="text-sm text-slate-500">
+              No payments recorded yet.{" "}
+              {invoice.booking_id && (
+                <Link href={`/bookings/${invoice.booking_id}`} className="text-blue-600 hover:underline">
+                  Add a receipt from the booking
+                </Link>
+              )}
+            </p>
+          ) : (
+            <ul className="divide-y divide-slate-100">
+              {payments.map((p) => (
+                <li key={p.id} className="flex justify-between py-2 text-sm">
+                  <span className="text-slate-600">
+                    {p.date?.slice(0, 10)} · {p.mode ?? "—"}
+                    {p.reference ? ` · ${p.reference}` : ""}
+                    <span className="ml-2 text-xs text-slate-400">{p.recorded_by}</span>
+                  </span>
+                  <span className="font-semibold text-emerald-700">{inr(p.amount)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

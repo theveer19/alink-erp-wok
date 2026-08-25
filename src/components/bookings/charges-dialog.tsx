@@ -59,7 +59,7 @@ export function ChargesDialog({
         <div className="flex-1 overflow-y-auto p-5">
           {charges.length === 0 && (
             <p className="rounded border border-dashed border-slate-300 py-8 text-center text-sm text-slate-500">
-              Abhi koi extra charge nahi. Toll, extra bed, early check-in, date change fee — sab yahan add karo.
+              No extra charges yet. Add tolls, extra beds, early check-in, date change fees and more here.
             </p>
           )}
 
@@ -69,7 +69,7 @@ export function ChargesDialog({
                 list="charge-presets"
                 value={c.label}
                 onChange={(e) => patch(c.id, { label: e.target.value })}
-                placeholder="Charge ka naam"
+                placeholder="Charge name"
                 className="col-span-5 rounded border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
               />
               <input
@@ -86,7 +86,7 @@ export function ChargesDialog({
                 disabled={!canSupplier}
                 className="col-span-3 rounded border border-slate-300 px-2 py-2 text-sm focus:border-blue-500 focus:outline-none disabled:bg-slate-50 disabled:text-slate-400"
               >
-                <option value="customer">Customer se lena</option>
+                <option value="customer">Bill to customer</option>
                 {canSupplier && <option value="supplier">Supplier cost</option>}
               </select>
               <button
@@ -116,12 +116,12 @@ export function ChargesDialog({
 
           <div className="mt-5 space-y-1 border-t border-slate-200 pt-4 text-sm">
             <div className="flex justify-between">
-              <span className="text-slate-500">Customer ko bill hoga</span>
+              <span className="text-slate-500">Billed to customer</span>
               <span className="font-semibold text-slate-800">{inr(customerTotal)}</span>
             </div>
             {canSupplier && (
               <div className="flex justify-between">
-                <span className="text-slate-500">Supplier cost me judega</span>
+                <span className="text-slate-500">Added to supplier cost</span>
                 <span className="font-semibold text-slate-800">{inr(supplierTotal)}</span>
               </div>
             )}

@@ -52,7 +52,7 @@ export function BookingEditView({ booking, role }: { booking: Booking; role: Rol
       router.refresh();
       return true;
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Kuch galat ho gaya");
+      setError(e instanceof Error ? e.message : "Something went wrong");
       return false;
     } finally {
       setBusy(false);
@@ -192,7 +192,7 @@ export function BookingEditView({ booking, role }: { booking: Booking; role: Rol
 
           {rows.length === 0 && (
             <p className="rounded border border-dashed border-slate-300 py-8 text-center text-sm text-slate-500">
-              Koi service nahi. Upar se Hotel ya Flight add karo.
+              No services yet. Use the buttons above to add a hotel or flight.
             </p>
           )}
 
@@ -220,7 +220,7 @@ export function BookingEditView({ booking, role }: { booking: Booking; role: Rol
                   type="button"
                   disabled={busy}
                   onClick={() => {
-                    if (confirm(`"${row.title}" hata dein?`))
+                    if (confirm(`"${row.title}" — remove this?`))
                       call({ action: "remove_service", rowId: row.rowId });
                   }}
                   aria-label="Remove service"

@@ -1,13 +1,13 @@
-// Booking detail screen ke dono gear menus ka single source of truth.
-// Transport ERP me row = "duty" hota hai; yahan row = ek service (hotel / flight / other).
+// Single source of truth for both gear menus on the booking detail screen.
+// In a transport ERP a row is a "duty"; here a row is one service (hotel / flight / other).
 
 import type { Booking, Role } from "@/lib/types";
 
 export type ServiceKind = "hotel" | "flight" | "other";
 
-/** Ek table row = ek hotel / flight / other service. */
+/** One table row = one hotel / flight / other service. */
 export interface ServiceRow {
-  /** `${kind}:${index}` — API ko yahi bhejte hain. */
+  /** `${kind}:${index}` — this is what we send to the API. */
   rowId: string;
   kind: ServiceKind;
   index: number;
@@ -54,7 +54,7 @@ export function serviceStatusColor(status: string): string {
   return map[status] ?? "bg-slate-100 text-slate-600";
 }
 
-/** hotels[] / flights[] / others[] ko ek flat, sorted row list me badalta hai. */
+/** Flattens hotels[] / flights[] / others[] into one sorted row list. */
 export function toServiceRows(b: Booking): ServiceRow[] {
   const customer = b.customer_snapshot?.name ?? "";
   const firstPax =
@@ -145,8 +145,8 @@ export function toServiceRows(b: Booking): ServiceRow[] {
 }
 
 // ---------------------------------------------------------------------------
-// Role rules — sales ko supplier/cost kuch nahi dikhta, accounts hi invoice
-// banata hai, ops hi supplier confirm karta hai. admin/super_admin sab kar sakte.
+// Role rules — sales never sees supplier or cost data, accounts owns invoicing
+// and operations confirms suppliers. admin/super_admin can do everything.
 // ---------------------------------------------------------------------------
 
 export function can(role: Role | undefined, allowed: Role[]): boolean {
@@ -160,7 +160,7 @@ export function isBookingLocked(b: Pick<Booking, "status" | "invoice_id">): bool
   return BOOKING_LOCKED_STATUSES.includes(b.status) || !!b.invoice_id;
 }
 
-/** API se baat karne ke liye ek hi action vocabulary. */
+/** Single action vocabulary shared with the API. */
 export type BookingActionType =
   | "send_confirmation"
   | "confirm_all"

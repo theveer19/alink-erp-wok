@@ -29,9 +29,9 @@ interface Props {
 const MENU_WIDTH = 256; // w-64
 
 /**
- * Menu ko portal se <body> par render karte hain, warna table ka
- * `overflow-x-auto` wrapper use clip kar deta hai aur kuch dikhta hi nahi.
- * Hover par khulta hai, click / Enter / Space se bhi — touch aur keyboard ke liye.
+ * The menu is portalled to <body>; otherwise the table's
+ * `overflow-x-auto` wrapper clips it and nothing shows up.
+ * Opens on hover, and also on click / Enter / Space for touch and keyboard.
  */
 export function ActionMenu({ items, variant = "gear", label = "Actions", className = "" }: Props) {
   const [open, setOpen] = useState(false);
@@ -50,7 +50,7 @@ export function ActionMenu({ items, variant = "gear", label = "Actions", classNa
   };
   const scheduleClose = () => {
     cancelClose();
-    // chhota delay taaki gear se menu tak cursor le jaate waqt band na ho
+    // small delay so the menu stays open while moving the cursor onto it
     closeTimer.current = setTimeout(() => setOpen(false), 200);
   };
 
@@ -63,7 +63,7 @@ export function ActionMenu({ items, variant = "gear", label = "Actions", classNa
     const spaceBelow = window.innerHeight - r.bottom;
     const dropUp = spaceBelow < menuH + 16 && r.top > menuH + 16;
 
-    // menu ka right edge trigger ke right edge se align
+    // align the menu's right edge with the trigger's right edge
     let left = r.right - MENU_WIDTH;
     left = Math.max(8, Math.min(left, window.innerWidth - MENU_WIDTH - 8));
 
@@ -88,7 +88,7 @@ export function ActionMenu({ items, variant = "gear", label = "Actions", classNa
 
     document.addEventListener("mousedown", onDocDown);
     document.addEventListener("keydown", onKey);
-    // capture: true taaki table ke andar ka scroll bhi pakda jaye
+    // capture: true so scrolling inside the table is caught too
     window.addEventListener("scroll", onScrollOrResize, true);
     window.addEventListener("resize", onScrollOrResize);
 

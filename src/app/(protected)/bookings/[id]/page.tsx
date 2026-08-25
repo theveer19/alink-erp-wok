@@ -1,4 +1,4 @@
-import { notFound, redirect } from "next/navigation";
+﻿import { notFound, redirect } from "next/navigation";
 import { getSessionProfile } from "@/lib/auth";
 import { computeFinancials, redactForRole } from "@/lib/bookings";
 import { BookingDetailView } from "@/components/bookings/booking-detail-view";
@@ -6,7 +6,7 @@ import type { Booking } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
-// Next.js 14 — params seedha object hai, Promise nahi.
+// Next.js 14 â€” params seedha object hai, Promise nahi.
 export default async function BookingDetailPage({
   params,
 }: {
