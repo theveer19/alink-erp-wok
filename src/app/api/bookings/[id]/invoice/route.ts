@@ -25,8 +25,24 @@ function buildItems(booking: Booking): InvoiceItemT[] {
     .filter((r) => r.status !== "Cancelled")
     .map((r) => {
       const amount = round2(num(r.raw.customer_selling_amount));
-      const parts = [r.title, r.detail, r.date ?? ""].filter(Boolean);
-      return { description: parts.join(" · "), qty: 1, rate: amount, amount };
+      const parts: string[] = [r.title];
+
+      if (r.kind === "hotel") {
+        const inTime = String(r.raw.check_in_time ?? "14:00");
+        const outTime = String(r.raw.check_out_time ?? "11:00");
+        parts.push(r.detail);
+        parts.push(`Check-in ${r.date ?? "—"} ${inTime} → Check-out ${r.endDate ?? "—"} ${outTime}`);
+        if (r.city) parts.push(r.city);
+      } else if (r.kind === "flight") {
+        parts.push(r.address || r.detail);
+        parts.push(`${r.date ?? "—"}${r.time ? ` ${r.time}` : ""}`);
+        if (r.raw.pnr) parts.push(`PNR ${String(r.raw.pnr)}`);
+      } else {
+        parts.push(r.detail);
+        if (r.date) parts.push(r.date);
+      }
+
+      return { description: parts.filter(Boolean).join(" · "), qty: 1, rate: amount, amount };
     });
 
   // Manual adjustments (charge-derived ones are not part of the service amount,
@@ -114,7 +130,12 @@ export async function POST(req: Request, { params }: { params: { id: string } })
         invoice_number,
         booking_id: booking.id,
         booking_number: booking.booking_number,
-        customer: booking.customer_snapshot,
+        customer: {
+          ...(booking.customer_snapshot ?? {}),
+          // Bill in the company's name when there is one.
+          name: booking.customer_snapshot?.company || booking.customer_snapshot?.name || "",
+          contact_person: booking.customer_snapshot?.name ?? null,
+        },
         items,
         subtotal: t.subtotal,
         discount: opts.discount,

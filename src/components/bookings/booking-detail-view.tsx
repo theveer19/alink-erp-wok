@@ -23,6 +23,7 @@ import { AttachmentsDialog } from "@/components/bookings/attachments-dialog";
 import { SendConfirmationDialog } from "@/components/bookings/send-confirmation-dialog";
 import { PaymentDialog } from "@/components/bookings/payment-dialog";
 import { InvoiceDialog } from "@/components/bookings/invoice-dialog";
+import { AllotDialog } from "@/components/bookings/allot-dialog";
 
 interface Props {
   booking: Booking;
@@ -47,6 +48,7 @@ export function BookingDetailView({ booking, role, demoExpiresOn }: Props) {
   const [sendOpen, setSendOpen] = useState(false);
   const [payOpen, setPayOpen] = useState(false);
   const [invoiceOpen, setInvoiceOpen] = useState(false);
+  const [allotRow, setAllotRow] = useState<ServiceRow | null>(null);
 
   const rows = useMemo(() => toServiceRows(booking), [booking]);
   const pax = useMemo(() => numPaxOf(booking as never), [booking]);
@@ -79,6 +81,59 @@ export function BookingDetailView({ booking, role, demoExpiresOn }: Props) {
 
   const go = (path: string) => router.push(path);
   const openPrint = (path: string) => window.open(path, "_blank", "noopener");
+
+  // ---------------- Status gear (workflow) ----------------
+  const workflowActions: ActionMenuItem[] = [
+    {
+      key: "wf-confirm-all",
+      label: "Confirm all services",
+      hidden: !can(role, ["operations"]),
+      disabled: locked || rows.length === 0,
+      reason: rows.length === 0 ? "No services have been added yet" : lockReason,
+      onSelect: () => run({ action: "confirm_all" }, "wf-confirm-all"),
+    },
+    {
+      key: "wf-unconfirm-all",
+      label: "Mark as unconfirmed",
+      hidden: !can(role, ["operations"]),
+      disabled: locked,
+      reason: lockReason,
+      onSelect: () => run({ action: "unconfirm_all" }, "wf-unconfirm-all"),
+    },
+    {
+      key: "wf-lock",
+      label: booking.rates_locked ? "Unlock rates" : "Lock rates",
+      hidden: !can(role, ["operations"]),
+      separatorBefore: true,
+      onSelect: () => run({ action: booking.rates_locked ? "unlock_rates" : "lock_rates" }, "wf-lock"),
+    },
+    {
+      key: "wf-invoice",
+      label: booking.invoice_id ? "View invoice" : "Generate invoice",
+      hidden: !can(role, ["accounts"]),
+      onSelect: () => (booking.invoice_id ? go(`/invoices/${booking.invoice_id}`) : setInvoiceOpen(true)),
+    },
+    {
+      key: "wf-close",
+      label: "Close booking",
+      hidden: !can(role, ["operations", "accounts"]),
+      disabled: locked,
+      reason: lockReason,
+      separatorBefore: true,
+      onSelect: () => {
+        if (confirm("Close this booking? It cannot be edited afterwards (an admin can reopen it)."))
+          run({ action: "close_booking" }, "wf-close");
+      },
+    },
+    {
+      key: "wf-reopen",
+      label: "Reopen booking",
+      hidden: !can(role, []),
+      disabled: !locked,
+      reason: "This booking is already open",
+      onSelect: () => run({ action: "reopen_booking" }, "wf-reopen"),
+    },
+  ];
 
   // ---------------- Header gear ----------------
   const bookingActions: ActionMenuItem[] = [
@@ -310,6 +365,7 @@ export function BookingDetailView({ booking, role, demoExpiresOn }: Props) {
           <span className={`rounded-full px-3 py-1 text-xs font-semibold ${statusColor(booking.status)}`}>
             {booking.status}
           </span>
+          <ActionMenu items={workflowActions} variant="row" align="right" label="Workflow actions" />
 
           <div className="ml-auto flex items-center gap-2">
             {attachmentCount > 0 && (
@@ -445,7 +501,7 @@ export function BookingDetailView({ booking, role, demoExpiresOn }: Props) {
                       {!row.supplierName && row.status !== "Cancelled" && can(role, ["operations"]) ? (
                         <button
                           type="button"
-                          onClick={() => setEditRow({ row, focus: "supplier" })}
+                          onClick={() => setAllotRow(row)}
                           className="rounded bg-emerald-600 px-3 py-1 text-xs font-bold tracking-wide text-white hover:bg-emerald-700"
                         >
                           ASSIGN
@@ -582,6 +638,19 @@ export function BookingDetailView({ booking, role, demoExpiresOn }: Props) {
           bookingId={booking.id}
           onClose={() => setSendOpen(false)}
           onSent={() => router.refresh()}
+        />
+      )}
+
+      {allotRow && (
+        <AllotDialog
+          row={allotRow}
+          bookingId={booking.id}
+          numPax={pax}
+          onClose={() => setAllotRow(null)}
+          onDone={() => {
+            setAllotRow(null);
+            router.refresh();
+          }}
         />
       )}
 

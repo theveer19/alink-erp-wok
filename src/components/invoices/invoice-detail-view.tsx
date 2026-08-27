@@ -56,6 +56,10 @@ export function InvoiceDetailView({ invoice, role }: { invoice: Invoice; role: R
     }
   }
 
+  const cust = invoice.customer as (typeof invoice.customer & { contact_person?: string | null }) | null;
+  const contactPerson =
+    cust?.contact_person && cust.contact_person !== (cust.company || cust.name) ? cust.contact_person : null;
+
   const statusColor =
     invoice.status === "Paid"
       ? "bg-emerald-100 text-emerald-700"
@@ -67,7 +71,10 @@ export function InvoiceDetailView({ invoice, role }: { invoice: Invoice; role: R
     <div className="min-h-screen bg-white">
       <style>{`
         @media print {
-          .no-print { display: none !important; }
+          /* Hide the app shell — only the invoice sheet should print. */
+          header, nav, footer.app-footer, .no-print { display: none !important; }
+          main { padding: 0 !important; margin: 0 !important; max-width: none !important; }
+          body { background: #fff !important; }
           @page { margin: 14mm; size: A4; }
         }
       `}</style>
@@ -134,10 +141,13 @@ export function InvoiceDetailView({ invoice, role }: { invoice: Invoice; role: R
 
           <section className="mb-6">
             <h3 className="mb-1 text-xs font-bold uppercase tracking-wide text-slate-400">Bill to</h3>
-            <p className="font-semibold text-slate-800">{invoice.customer?.name ?? "—"}</p>
-            {invoice.customer?.company && <p className="text-sm text-slate-600">{invoice.customer.company}</p>}
+            <p className="text-base font-semibold text-slate-800">
+              {invoice.customer?.company || invoice.customer?.name || "—"}
+            </p>
+            {contactPerson && <p className="text-sm text-slate-600">Attn: {contactPerson}</p>}
             {invoice.customer?.address && <p className="text-sm text-slate-600">{invoice.customer.address}</p>}
             {invoice.customer?.mobile && <p className="text-sm text-slate-600">{invoice.customer.mobile}</p>}
+            {invoice.customer?.email && <p className="text-sm text-slate-600">{invoice.customer.email}</p>}
             {invoice.customer?.gst_number && (
               <p className="text-sm text-slate-600">GSTIN: {invoice.customer.gst_number}</p>
             )}

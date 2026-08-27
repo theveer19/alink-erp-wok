@@ -22,6 +22,8 @@ interface Props {
   items: ActionMenuItem[];
   /** "gear" = big header gear + chevron, "row" = small gear inside a table row. */
   variant?: "gear" | "row";
+  /** Which edge of the trigger the menu lines up with. */
+  align?: "left" | "right";
   label?: string;
   className?: string;
 }
@@ -33,7 +35,13 @@ const MENU_WIDTH = 256; // w-64
  * `overflow-x-auto` wrapper clips it and nothing shows up.
  * Opens on hover, and also on click / Enter / Space for touch and keyboard.
  */
-export function ActionMenu({ items, variant = "gear", label = "Actions", className = "" }: Props) {
+export function ActionMenu({
+  items,
+  variant = "gear",
+  align = "left",
+  label = "Actions",
+  className = "",
+}: Props) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState<{ top: number; left: number; dropUp: boolean } | null>(null);
 
@@ -63,12 +71,12 @@ export function ActionMenu({ items, variant = "gear", label = "Actions", classNa
     const spaceBelow = window.innerHeight - r.bottom;
     const dropUp = spaceBelow < menuH + 16 && r.top > menuH + 16;
 
-    // align the menu's right edge with the trigger's right edge
-    let left = r.right - MENU_WIDTH;
+    // align the menu with the requested edge of the trigger
+    let left = align === "right" ? r.left : r.right - MENU_WIDTH;
     left = Math.max(8, Math.min(left, window.innerWidth - MENU_WIDTH - 8));
 
     setPos({ top: dropUp ? r.top - menuH - 4 : r.bottom + 4, left, dropUp });
-  }, [visible.length]);
+  }, [visible.length, align]);
 
   useLayoutEffect(() => {
     if (open) place();

@@ -17,6 +17,7 @@ const FIELDS: Record<string, F[]> = {
     { key: "check_in", label: "Check-in", type: "date" },
     { key: "check_out", label: "Check-out", type: "date" },
     { key: "check_in_time", label: "Check-in time", type: "time" },
+    { key: "check_out_time", label: "Check-out time", type: "time" },
     { key: "nights", label: "Nights", type: "number" },
     { key: "rooms", label: "Rooms", type: "number" },
     { key: "meal_plan", label: "Meal plan (CP/MAP/AP)" },
@@ -58,6 +59,10 @@ const inr = (n: number) => `₹${Number(n || 0).toLocaleString("en-IN", { maximu
 interface SupplierOpt {
   id: string;
   name: string;
+  contact_person?: string | null;
+  mobile?: string | null;
+  default_rate?: number | null;
+  default_service_charge?: number | null;
 }
 
 export function ServiceEditDialog({
@@ -90,7 +95,7 @@ export function ServiceEditDialog({
       .then((r) => r.json())
       .then((j) => {
         const list = Array.isArray(j) ? j : (j.data ?? j.suppliers ?? []);
-        if (alive) setSuppliers(list.map((s: SupplierOpt) => ({ id: s.id, name: s.name })));
+        if (alive) setSuppliers(list as SupplierOpt[]);
       })
       .catch(() => void 0);
     return () => {
@@ -161,50 +166,6 @@ export function ServiceEditDialog({
             </div>,
           )}
 
-          {canCost &&
-            section(
-              "Supplier & cost",
-              focus === "supplier",
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <label className="sm:col-span-2">
-                  <span className="mb-1 block text-xs font-medium text-slate-500">Supplier</span>
-                  <select
-                    value={String(draft.supplier_id ?? "")}
-                    onChange={(e) => {
-                      const s = suppliers.find((x) => x.id === e.target.value);
-                      set("supplier_id", e.target.value || null);
-                      set("supplier_name", s?.name ?? null);
-                    }}
-                    className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                  >
-                    <option value="">— Select a supplier —</option>
-                    {suppliers.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                {[
-                  { key: "supplier_booking_id", label: "Supplier booking ID" },
-                  { key: "supplier_reference", label: "Supplier reference" },
-                  { key: "supplier_rate", label: "Supplier rate", type: "number" as const },
-                  { key: "supplier_service_charge", label: "Supplier service charge", type: "number" as const },
-                  { key: "taxes", label: "Taxes", type: "number" as const },
-                  { key: "other_charges_manual", label: "Other charges (manual)", type: "number" as const },
-                ].map((f) => (
-                  <label key={f.key}>
-                    <span className="mb-1 block text-xs font-medium text-slate-500">{f.label}</span>
-                    {input(f)}
-                  </label>
-                ))}
-                <p className="text-xs text-slate-400 sm:col-span-2">
-                  Supplier charges added in the Charges dialog roll up into "Other charges" automatically.
-                </p>
-              </div>,
-            )}
-
           {section(
             "Customer rate",
             focus === "extras",
@@ -242,6 +203,53 @@ export function ServiceEditDialog({
                 ))}
             </div>,
           )}
+
+          {canCost &&
+            section(
+              "Supplier & cost",
+              focus === "supplier",
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <label className="sm:col-span-2">
+                  <span className="mb-1 block text-xs font-medium text-slate-500">Supplier</span>
+                  <select
+                    value={String(draft.supplier_id ?? "")}
+                    onChange={(e) => {
+                      const s = suppliers.find((x) => x.id === e.target.value);
+                      set("supplier_id", e.target.value || null);
+                      set("supplier_name", s?.name ?? null);
+                      set("supplier_contact", s?.mobile ?? s?.contact_person ?? null);
+                      // Defaults from the supplier master, only where nothing was typed yet.
+                      if (s?.default_rate && !Number(draft.supplier_rate)) set("supplier_rate", s.default_rate);
+                      if (s?.default_service_charge && !Number(draft.supplier_service_charge))
+                        set("supplier_service_charge", s.default_service_charge);
+                    }}
+                    className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                  >
+                    <option value="">— Select a supplier —</option>
+                    {suppliers.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                {[
+                  { key: "supplier_rate", label: "Supplier rate", type: "number" as const },
+                  { key: "supplier_service_charge", label: "Supplier service charge", type: "number" as const },
+                  { key: "taxes", label: "Taxes", type: "number" as const },
+                  { key: "other_charges_manual", label: "Other charges (manual)", type: "number" as const },
+                ].map((f) => (
+                  <label key={f.key}>
+                    <span className="mb-1 block text-xs font-medium text-slate-500">{f.label}</span>
+                    {input(f)}
+                  </label>
+                ))}
+                <p className="text-xs text-slate-400 sm:col-span-2">
+                  Supplier charges added in the Charges dialog roll up into "Other charges" automatically.
+                </p>
+              </div>,
+            )}
 
           <div className="rounded-lg bg-slate-50 p-4 text-sm">
             <div className="flex justify-between py-1">
