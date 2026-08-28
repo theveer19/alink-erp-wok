@@ -61,10 +61,11 @@ function buildItems(booking: Booking): InvoiceItemT[] {
     }
   }
 
-  // Manual adjustments (charge-derived ones are not part of the service amount,
-  // so they are added as their own lines).
+  // Manual adjustments only. Charge-derived ones (ref "charge:…") are written
+  // out by the loop below, so counting them here would bill twice.
   for (const a of booking.adjustments ?? []) {
     const o = a as Record<string, unknown>;
+    if (String(o.ref ?? "").startsWith("charge:")) continue;
     const amount = round2(num(o.amount));
     if (!amount) continue;
     items.push({
@@ -78,10 +79,19 @@ function buildItems(booking: Booking): InvoiceItemT[] {
   return items;
 }
 
+/** Service charge lives on each service; the booking column is only a manual top-up. */
+function serviceChargeTotal(b: Booking): number {
+  const rows = toServiceRows(b);
+  const fromServices = rows
+    .filter((r) => r.status !== "Cancelled")
+    .reduce((a, r) => a + num(r.raw.customer_service_charge), 0);
+  return round2(num(b.service_charge_total) + fromServices);
+}
+
 function totals(items: InvoiceItemT[], b: Booking, opts: z.infer<typeof Body>) {
   const subtotal = round2(items.reduce((a, i) => a + num(i.amount), 0));
   const afterDiscount = round2(subtotal - num(opts.discount));
-  const serviceCharge = round2(num(b.service_charge_total));
+  const serviceCharge = serviceChargeTotal(b);
   const taxBase = opts.gst_basis === "service_charge" ? serviceCharge : afterDiscount;
   const tax_amount = round2((taxBase * num(opts.tax_rate)) / 100);
   const beforeRound = round2(afterDiscount + tax_amount);
@@ -106,7 +116,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
         : null,
       customer: booking.customer_snapshot,
       items,
-      service_charge_total: num(booking.service_charge_total),
+      service_charge_total: serviceChargeTotal(booking),
       total_sales: fin.total_sales,
     });
   } catch (e) {

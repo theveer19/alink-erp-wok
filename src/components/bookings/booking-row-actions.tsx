@@ -5,8 +5,6 @@ import { useRouter } from "next/navigation";
 import { ActionMenu, type ActionMenuItem } from "@/components/ui/action-menu";
 import { can } from "@/lib/booking-actions";
 import { SendConfirmationDialog } from "@/components/bookings/send-confirmation-dialog";
-import { PaymentDialog } from "@/components/bookings/payment-dialog";
-import { InvoiceDialog } from "@/components/bookings/invoice-dialog";
 import type { Role } from "@/lib/types";
 
 export interface RowBooking {
@@ -33,8 +31,6 @@ export function BookingRowActions({
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [sendOpen, setSendOpen] = useState(false);
-  const [payOpen, setPayOpen] = useState(false);
-  const [invoiceOpen, setInvoiceOpen] = useState(false);
 
   const locked = ["Completed", "Closed", "Cancelled"].includes(booking.status) || !!booking.invoice_id;
   const lockReason = booking.invoice_id
@@ -74,7 +70,7 @@ export function BookingRowActions({
       hidden: !can(role, ["sales", "operations"]),
       disabled: locked || busy,
       reason: lockReason,
-      onSelect: () => go(`/bookings/${booking.id}/edit`),
+      onSelect: () => go(`/bookings/new?edit=${booking.id}`),
     },
     {
       key: "send",
@@ -89,73 +85,9 @@ export function BookingRowActions({
       onSelect: () => openPrint(`/bookings/${booking.id}/print/confirmation`),
     },
     {
-      key: "voucher",
-      label: "Print voucher / e-ticket",
-      onSelect: () => openPrint(`/bookings/${booking.id}/print/voucher`),
-    },
-    {
-      key: "confirm-all",
-      label: "Confirm all services",
-      hidden: !can(role, ["operations"]),
-      separatorBefore: true,
-      disabled: locked || busy,
-      reason: lockReason,
-      onSelect: () => run({ action: "confirm_all" }),
-    },
-    {
-      key: "lock",
-      label: booking.rates_locked ? "Unlock rates" : "Lock rates",
-      hidden: !can(role, ["operations"]),
-      disabled: busy,
-      onSelect: () => run({ action: booking.rates_locked ? "unlock_rates" : "lock_rates" }),
-    },
-    {
-      key: "advance",
-      label: "Add advance payment receipt",
-      hidden: !can(role, ["accounts"]),
-      separatorBefore: true,
-      onSelect: () => setPayOpen(true),
-    },
-    {
-      key: "invoice",
-      label: booking.invoice_id ? "View invoice" : "Generate invoice",
-      hidden: !can(role, ["accounts"]),
-      onSelect: () => (booking.invoice_id ? go(`/invoices/${booking.invoice_id}`) : setInvoiceOpen(true)),
-    },
-    {
-      key: "duplicate",
-      label: "Duplicate booking",
-      hidden: !can(role, ["sales", "operations"]),
-      separatorBefore: true,
-      disabled: busy,
-      onSelect: () => {
-        if (confirm("Create a new booking with the same customer and services?"))
-          run({ action: "duplicate_booking" });
-      },
-    },
-    {
-      key: "close",
-      label: "Close booking",
-      hidden: !can(role, ["operations", "accounts"]),
-      disabled: locked || busy,
-      reason: lockReason,
-      onSelect: () => {
-        if (confirm("Close this booking? It cannot be edited afterwards (an admin can reopen it)."))
-          run({ action: "close_booking" });
-      },
-    },
-    {
-      key: "reopen",
-      label: "Reopen booking",
-      hidden: !can(role, []),
-      disabled: !locked || busy,
-      reason: "This booking is already open",
-      onSelect: () => run({ action: "reopen_booking" }),
-    },
-    {
       key: "delete",
       label: "Delete booking",
-      hidden: !can(role, []),
+      hidden: !can(role, []), // admin / super_admin only
       danger: true,
       separatorBefore: true,
       disabled: !!booking.invoice_id || busy,
@@ -182,27 +114,6 @@ export function BookingRowActions({
         />
       )}
 
-      {payOpen && (
-        <PaymentDialog
-          bookingId={booking.id}
-          onClose={() => setPayOpen(false)}
-          onSaved={() => {
-            router.refresh();
-            onChanged?.();
-          }}
-        />
-      )}
-
-      {invoiceOpen && (
-        <InvoiceDialog
-          bookingId={booking.id}
-          onClose={() => setInvoiceOpen(false)}
-          onCreated={(redirect) => {
-            setInvoiceOpen(false);
-            router.push(redirect);
-          }}
-        />
-      )}
     </>
   );
 }

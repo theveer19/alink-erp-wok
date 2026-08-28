@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { PageHeader, Section, Field } from "@/components/common";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,7 +23,12 @@ export default function NewBookingClient({
   suppliers: SupplierFull[]; // kept for page compatibility, not used
 }) {
   const router = useRouter();
+  const params = useSearchParams();
+  // ?edit=<booking id> turns this same form into the edit screen.
+  const editId = params.get("edit");
   const [saving, setSaving] = useState(false);
+  const [loadingEdit, setLoadingEdit] = useState(!!editId);
+  const [extraServices, setExtraServices] = useState(0);
   const [step, setStep] = useState<1 | 2>(1);
 
   // 1. Customer
@@ -95,12 +100,150 @@ export default function NewBookingClient({
   const rateTotal = perPaxRate * paxCount;
   const grandTotal = rateTotal + Number(scValue || 0);
 
+  // Pull the existing booking into the form when editing.
+  useEffect(() => {
+    if (!editId) return;
+    let alive = true;
+    (async () => {
+      try {
+        const res = await fetch(`/api/bookings/${editId}`);
+        const b = await res.json();
+        if (!res.ok) throw new Error(b.error ?? "Could not load the booking");
+        if (!alive) return;
+
+        setCustomerId(b.customer_id ?? "");
+        setBooker({
+          name: b.booked_by ?? bookerName,
+          mobile: b.booker_mobile ?? "",
+          email: b.booker_email ?? "",
+        });
+        const list = Array.isArray(b.passengers) ? b.passengers : [];
+        setPax(
+          list.length
+            ? list.map((p: Record<string, unknown>) => ({
+                name: String(p.name ?? ""),
+                mobile: String(p.mobile ?? ""),
+                email: String(p.email ?? ""),
+              }))
+            : [emptyPax()],
+        );
+
+        const h = (b.hotels ?? [])[0];
+        const f = (b.flights ?? [])[0];
+        const total = (b.hotels?.length ?? 0) + (b.flights?.length ?? 0) + (b.others?.length ?? 0);
+        setExtraServices(Math.max(0, total - 1));
+
+        if (h) {
+          setSvcType("hotel");
+          setHotel({
+            hotel_name: String(h.hotel_name ?? ""),
+            checkin: String(h.check_in ?? h.checkin ?? "").slice(0, 10),
+            checkin_time: String(h.check_in_time ?? "14:00"),
+            checkout: String(h.check_out ?? h.checkout ?? "").slice(0, 10),
+            checkout_time: String(h.check_out_time ?? "11:00"),
+            rate: String(h.sales_rate ?? h.customer_rate ?? ""),
+            service_charge: String(h.customer_service_charge ?? ""),
+          });
+          setScTouched(true);
+        } else if (f) {
+          setSvcType("flight");
+          setFlight({
+            origin: String(f.from ?? f.origin ?? ""),
+            destination: String(f.to ?? f.destination ?? ""),
+            flight_number: String(f.flight_number ?? ""),
+            date: String(f.departure_date ?? "").slice(0, 10),
+            rate: String(f.sales_rate ?? f.customer_rate ?? ""),
+            service_charge: String(f.customer_service_charge ?? ""),
+          });
+          setScTouched(true);
+        }
+        setStep(2);
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Could not load the booking");
+      } finally {
+        if (alive) setLoadingEdit(false);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [editId, bookerName]);
+
   const setP = (i: number, k: keyof Passenger, v: string) =>
     setPax((arr) => arr.map((p, idx) => (idx === i ? { ...p, [k]: v } : p)));
 
   const goNext = () => {
     if (!customerId) return toast.error("Select a customer to continue");
     setStep(2);
+  };
+
+  const post = (id: string, body: Record<string, unknown>) =>
+    fetch(`/api/bookings/${id}/actions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }).then(async (res) => {
+      const j = await res.json();
+      if (!res.ok) throw new Error(j.error ?? "Could not save");
+      return j;
+    });
+
+  const saveEdit = async () => {
+    if (!svcType) return toast.error("Choose a service (Hotel or Flight)");
+    setSaving(true);
+    try {
+      const cleanPax = pax.filter((p) => p.name.trim());
+      const destination = svcType === "flight" ? `${flight.origin} → ${flight.destination}` : hotel.hotel_name;
+
+      await post(editId!, {
+        action: "update_booking",
+        fields: {
+          booked_by: booker.name,
+          booker_mobile: booker.mobile,
+          booker_email: booker.email,
+          destination,
+          travel_start_date: (svcType === "flight" ? flight.date : hotel.checkin) || null,
+          travel_end_date: (svcType === "hotel" ? hotel.checkout : flight.date) || null,
+          num_travellers: cleanPax.length || 1,
+          passengers: cleanPax,
+        },
+      });
+
+      const rowId = svcType === "hotel" ? "hotel:0" : "flight:0";
+      const fields =
+        svcType === "hotel"
+          ? {
+              hotel_name: hotel.hotel_name,
+              check_in: hotel.checkin,
+              check_in_time: hotel.checkin_time,
+              check_out: hotel.checkout,
+              check_out_time: hotel.checkout_time,
+              nights: nights || "1",
+              rate_basis: "per_pax",
+              sales_rate: perPaxRate,
+              customer_rate: rateTotal,
+              customer_service_charge: scValue,
+            }
+          : {
+              flight_number: flight.flight_number,
+              from: flight.origin,
+              to: flight.destination,
+              departure_date: flight.date,
+              rate_basis: "per_pax",
+              sales_rate: perPaxRate,
+              customer_rate: rateTotal,
+              customer_service_charge: scValue,
+            };
+
+      await post(editId!, { action: "update_service", rowId, fields });
+
+      toast.success("Booking updated");
+      router.push(`/bookings/${editId}`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not save the booking");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const book = async () => {
@@ -184,19 +327,34 @@ export default function NewBookingClient({
   return (
     <div className="max-w-4xl space-y-6">
       <PageHeader
-        title="New Booking"
+        title={editId ? "Edit Booking" : "New Booking"}
         subtitle={
-          step === 1 ? "Step 1 of 2 — select the billing customer." : "Step 2 of 2 — booker, passengers & service."
+          editId
+            ? "Update the booker, passengers and service details."
+            : step === 1
+              ? "Step 1 of 2 — select the billing customer."
+              : "Step 2 of 2 — booker, passengers & service."
         }
       />
 
-      <div className="flex items-center gap-2 text-sm">
-        <Dot n={1} active={step === 1} done={step > 1} label="Customer" />
-        <div className="h-px w-8 bg-slate-300" />
-        <Dot n={2} active={step === 2} done={false} label="Details" />
-      </div>
+      {loadingEdit && <p className="text-sm text-slate-500">Loading booking…</p>}
 
-      {step === 1 && (
+      {editId && extraServices > 0 && (
+        <p className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          This booking has {extraServices} more service{extraServices === 1 ? "" : "s"}. Edit those from the
+          booking page — this form covers the first one.
+        </p>
+      )}
+
+      {!editId && (
+        <div className="flex items-center gap-2 text-sm">
+          <Dot n={1} active={step === 1} done={step > 1} label="Customer" />
+          <div className="h-px w-8 bg-slate-300" />
+          <Dot n={2} active={step === 2} done={false} label="Details" />
+        </div>
+      )}
+
+      {step === 1 && !editId && (
         <>
           <Section title="1. Select Customer (Billing)">
             <div className="space-y-4 p-5">
@@ -386,11 +544,16 @@ export default function NewBookingClient({
           )}
 
           <div className="flex justify-between">
-            <Button variant="outline" onClick={() => setStep(1)} disabled={saving}>
-              <ArrowLeft size={16} /> Back
+            <Button
+              variant="outline"
+              onClick={() => (editId ? router.push(`/bookings/${editId}`) : setStep(1))}
+              disabled={saving}
+            >
+              <ArrowLeft size={16} /> {editId ? "Cancel" : "Back"}
             </Button>
-            <Button onClick={book} disabled={saving}>
-              <CheckCircle2 size={16} /> {saving ? "Booking…" : "Book"}
+            <Button onClick={editId ? saveEdit : book} disabled={saving}>
+              <CheckCircle2 size={16} />{" "}
+              {saving ? (editId ? "Saving…" : "Booking…") : editId ? "Save changes" : "Book"}
             </Button>
           </div>
         </>

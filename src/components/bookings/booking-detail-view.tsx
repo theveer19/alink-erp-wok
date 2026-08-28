@@ -86,56 +86,6 @@ export function BookingDetailView({ booking, role, demoExpiresOn }: Props) {
   const go = (path: string) => router.push(path);
   const openPrint = (path: string) => window.open(path, "_blank", "noopener");
 
-  // ---------------- Status gear (workflow) ----------------
-  const workflowActions: ActionMenuItem[] = [
-    {
-      key: "wf-confirm-all",
-      label: "Confirm all services",
-      hidden: !can(role, ["operations"]),
-      disabled: locked || rows.length === 0,
-      reason: rows.length === 0 ? "No services have been added yet" : lockReason,
-      onSelect: () => run({ action: "confirm_all" }, "wf-confirm-all"),
-    },
-    {
-      key: "wf-unconfirm-all",
-      label: "Mark as unconfirmed",
-      hidden: !can(role, ["operations"]),
-      disabled: locked,
-      reason: lockReason,
-      onSelect: () => run({ action: "unconfirm_all" }, "wf-unconfirm-all"),
-    },
-    {
-      key: "wf-lock",
-      label: booking.rates_locked ? "Unlock rates" : "Lock rates",
-      hidden: !can(role, ["operations"]),
-      separatorBefore: true,
-      onSelect: () => run({ action: booking.rates_locked ? "unlock_rates" : "lock_rates" }, "wf-lock"),
-    },
-    {
-      key: "wf-invoice",
-      label: booking.invoice_id ? "View invoice" : "Generate invoice",
-      hidden: !can(role, ["accounts"]),
-      onSelect: () => (booking.invoice_id ? go(`/invoices/${booking.invoice_id}`) : setInvoiceOpen(true)),
-    },
-    {
-      key: "wf-close",
-      label: "Close booking",
-      hidden: !can(role, ["operations", "accounts"]),
-      disabled: locked,
-      reason: lockReason,
-      separatorBefore: true,
-      onSelect: () => setCloseBookingOpen(true),
-    },
-    {
-      key: "wf-reopen",
-      label: "Reopen booking",
-      hidden: !can(role, []),
-      disabled: !locked,
-      reason: "This booking is already open",
-      onSelect: () => run({ action: "reopen_booking" }, "wf-reopen"),
-    },
-  ];
-
   // ---------------- Header gear ----------------
   const bookingActions: ActionMenuItem[] = [
     {
@@ -318,6 +268,38 @@ export function BookingDetailView({ booking, role, demoExpiresOn }: Props) {
         onSelect: () => openPrint(voucherPath),
       },
       {
+        key: "bk-invoice",
+        label: booking.invoice_id ? "View invoice" : "Generate invoice",
+        hidden: !can(role, ["accounts"]),
+        separatorBefore: true,
+        onSelect: () => (booking.invoice_id ? go(`/invoices/${booking.invoice_id}`) : setInvoiceOpen(true)),
+      },
+      {
+        key: "bk-advance",
+        label: "Add advance payment receipt",
+        hidden: !can(role, ["accounts"]),
+        onSelect: () => setPayOpen(true),
+      },
+      {
+        key: "bk-send",
+        label: "Send confirmation",
+        hidden: !can(role, ["sales", "operations"]),
+        onSelect: () => setSendOpen(true),
+      },
+      {
+        key: "bk-files",
+        label: `Attach file / bills${attachmentCount ? ` (${attachmentCount})` : ""}`,
+        onSelect: () => setFilesFor({ row: null }),
+      },
+      {
+        key: "bk-close",
+        label: "Close booking",
+        hidden: !can(role, ["operations", "accounts"]),
+        disabled: locked,
+        reason: lockReason,
+        onSelect: () => setCloseBookingOpen(true),
+      },
+      {
         key: "cancel",
         label: row.kind === "flight" ? "Cancel flight" : row.kind === "hotel" ? "Cancel hotel" : "Cancel service",
         hidden: !can(role, ["operations"]),
@@ -363,7 +345,6 @@ export function BookingDetailView({ booking, role, demoExpiresOn }: Props) {
           <span className={`rounded-full px-3 py-1 text-xs font-semibold ${statusColor(booking.status)}`}>
             {booking.status}
           </span>
-          <ActionMenu items={workflowActions} variant="row" align="right" label="Workflow actions" />
 
           <div className="ml-auto flex items-center gap-2">
             {attachmentCount > 0 && (
@@ -378,7 +359,7 @@ export function BookingDetailView({ booking, role, demoExpiresOn }: Props) {
             )}
             {can(role, ["sales", "operations"]) && (
               <Link
-                href={`/bookings/${booking.id}/edit`}
+                href={`/bookings/new?edit=${booking.id}`}
                 className={`rounded bg-blue-600 px-6 py-2.5 text-sm font-semibold tracking-wide text-white hover:bg-blue-700 ${
                   locked ? "pointer-events-none opacity-40" : ""
                 }`}
@@ -387,7 +368,6 @@ export function BookingDetailView({ booking, role, demoExpiresOn }: Props) {
                 EDIT
               </Link>
             )}
-            <ActionMenu items={bookingActions} variant="gear" label="Booking actions" />
           </div>
         </div>
 
@@ -439,10 +419,13 @@ export function BookingDetailView({ booking, role, demoExpiresOn }: Props) {
                 <tr>
                   <td colSpan={12} className="py-14 text-center text-slate-500">
                     This booking has no services yet.{" "}
-                    <Link href={`/bookings/${booking.id}/edit`} className="text-blue-600 hover:underline">
+                    <Link href={`/bookings/new?edit=${booking.id}`} className="text-blue-600 hover:underline">
                       add a hotel or flight
                     </Link>
                     .
+                    <span className="ml-2 inline-block align-middle">
+                      <ActionMenu items={bookingActions} variant="row" label="Booking actions" />
+                    </span>
                   </td>
                 </tr>
               )}
@@ -598,7 +581,6 @@ export function BookingDetailView({ booking, role, demoExpiresOn }: Props) {
       {chargesRow && (
         <ChargesDialog
           row={chargesRow}
-          role={role}
           onClose={() => setChargesRow(null)}
           onSave={async (charges) => {
             await run({ action: "set_charges", rowId: chargesRow.rowId, charges }, "charges");
@@ -657,6 +639,7 @@ export function BookingDetailView({ booking, role, demoExpiresOn }: Props) {
           row={closeRow}
           bookingId={booking.id}
           role={role}
+          numPax={pax}
           onClose={() => setCloseRow(null)}
           onDone={() => {
             setCloseRow(null);

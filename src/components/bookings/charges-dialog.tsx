@@ -9,25 +9,21 @@ import {
   sumCharges,
   type Charge,
 } from "@/lib/booking-charges";
-import { can, type ServiceRow } from "@/lib/booking-actions";
-import type { Role } from "@/lib/types";
+import type { ServiceRow } from "@/lib/booking-actions";
 
 const inr = (n: number) => `₹${n.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
 
 export function ChargesDialog({
   row,
-  role,
   onClose,
   onSave,
 }: {
   row: ServiceRow;
-  role: Role;
   onClose: () => void;
   onSave: (charges: Charge[]) => void | Promise<void>;
 }) {
   const [charges, setCharges] = useState<Charge[]>(readCharges(row.raw));
   const [saving, setSaving] = useState(false);
-  const canSupplier = can(role, ["operations", "accounts"]);
 
   const add = () =>
     setCharges((c) => [
@@ -41,7 +37,6 @@ export function ChargesDialog({
   const remove = (id: string) => setCharges((c) => c.filter((x) => x.id !== id));
 
   const customerTotal = sumCharges(charges, "customer");
-  const supplierTotal = sumCharges(charges, "supplier");
 
   return (
     <div className="fixed inset-0 z-[900] flex items-center justify-center bg-slate-900/40 p-4">
@@ -70,7 +65,7 @@ export function ChargesDialog({
                 value={c.label}
                 onChange={(e) => patch(c.id, { label: e.target.value })}
                 placeholder="Charge name"
-                className="col-span-5 rounded border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                className="col-span-8 rounded border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
               />
               <input
                 type="number"
@@ -80,15 +75,6 @@ export function ChargesDialog({
                 placeholder="0.00"
                 className="col-span-3 rounded border border-slate-300 px-3 py-2 text-right text-sm focus:border-blue-500 focus:outline-none"
               />
-              <select
-                value={c.bearer}
-                onChange={(e) => patch(c.id, { bearer: e.target.value as Charge["bearer"] })}
-                disabled={!canSupplier}
-                className="col-span-3 rounded border border-slate-300 px-2 py-2 text-sm focus:border-blue-500 focus:outline-none disabled:bg-slate-50 disabled:text-slate-400"
-              >
-                <option value="customer">Bill to customer</option>
-                {canSupplier && <option value="supplier">Supplier cost</option>}
-              </select>
               <button
                 type="button"
                 onClick={() => remove(c.id)}
@@ -114,17 +100,9 @@ export function ChargesDialog({
             <Plus className="h-4 w-4" /> Add charge
           </button>
 
-          <div className="mt-5 space-y-1 border-t border-slate-200 pt-4 text-sm">
-            <div className="flex justify-between">
-              <span className="text-slate-500">Billed to customer</span>
-              <span className="font-semibold text-slate-800">{inr(customerTotal)}</span>
-            </div>
-            {canSupplier && (
-              <div className="flex justify-between">
-                <span className="text-slate-500">Added to supplier cost</span>
-                <span className="font-semibold text-slate-800">{inr(supplierTotal)}</span>
-              </div>
-            )}
+          <div className="mt-5 flex justify-between border-t border-slate-200 pt-4 text-sm">
+            <span className="text-slate-500">Total</span>
+            <span className="font-semibold text-slate-800">{inr(customerTotal)}</span>
           </div>
         </div>
 
