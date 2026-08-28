@@ -17,7 +17,6 @@ import { customerChargeTotal, readCharges, type Charge } from "@/lib/booking-cha
 import type { Booking, Role } from "@/lib/types";
 import { LabelDialog } from "@/components/bookings/label-dialog";
 import { ServiceDetailDrawer } from "@/components/bookings/service-detail-drawer";
-import { ServiceEditDialog } from "@/components/bookings/service-edit-dialog";
 import { ChargesDialog } from "@/components/bookings/charges-dialog";
 import { AttachmentsDialog } from "@/components/bookings/attachments-dialog";
 import { SendConfirmationDialog } from "@/components/bookings/send-confirmation-dialog";
@@ -45,7 +44,6 @@ export function BookingDetailView({ booking, role, demoExpiresOn }: Props) {
   const [labelRow, setLabelRow] = useState<ServiceRow | null>(null);
   const [detailRow, setDetailRow] = useState<ServiceRow | null>(null);
   const [chargesRow, setChargesRow] = useState<ServiceRow | null>(null);
-  const [editRow, setEditRow] = useState<{ row: ServiceRow; focus: "supplier" | "extras" | null } | null>(null);
   const [filesFor, setFilesFor] = useState<{ row: ServiceRow | null } | null>(null);
   const [sendOpen, setSendOpen] = useState(false);
   const [payOpen, setPayOpen] = useState(false);
@@ -221,7 +219,7 @@ export function BookingDetailView({ booking, role, demoExpiresOn }: Props) {
         hidden: !can(role, ["sales", "operations"]),
         disabled: locked || cancelled,
         reason: cancelled ? "A cancelled service cannot be edited" : lockReason,
-        onSelect: () => setEditRow({ row, focus: null }),
+        onSelect: () => go(`/bookings/new?edit=${booking.id}`),
       },
       {
         key: "charges",
@@ -243,7 +241,7 @@ export function BookingDetailView({ booking, role, demoExpiresOn }: Props) {
         separatorBefore: true,
         disabled: locked || cancelled,
         reason: cancelled ? "A cancelled service cannot be assigned a supplier" : lockReason,
-        onSelect: () => setEditRow({ row, focus: "supplier" }),
+        onSelect: () => setAllotRow(row),
       },
       {
         key: "send-supplier",
@@ -589,20 +587,6 @@ export function BookingDetailView({ booking, role, demoExpiresOn }: Props) {
         />
       )}
 
-      {editRow && (
-        <ServiceEditDialog
-          row={editRow.row}
-          role={role}
-          numPax={pax}
-          focus={editRow.focus}
-          onClose={() => setEditRow(null)}
-          onSave={async (fields) => {
-            await run({ action: "update_service", rowId: editRow.row.rowId, fields }, "edit");
-            setEditRow(null);
-          }}
-        />
-      )}
-
       {filesFor && (
         <AttachmentsDialog
           bookingId={booking.id}
@@ -650,10 +634,8 @@ export function BookingDetailView({ booking, role, demoExpiresOn }: Props) {
 
       {closeBookingOpen && (
         <CloseBookingDialog
-          bookingId={booking.id}
-          bookingNumber={booking.booking_number}
+          booking={booking}
           rows={rows}
-          totalSales={booking.financials?.total_sales}
           onClose={() => setCloseBookingOpen(false)}
           onDone={() => {
             setCloseBookingOpen(false);

@@ -1,4 +1,4 @@
-// Shared booking logic — ported 1:1 from the demo's compute_financials
+﻿// Shared booking logic â€” ported 1:1 from the demo's compute_financials
 // and redact_for_role so numbers match exactly.
 
 export const BOOKING_STATUSES = [
@@ -83,7 +83,7 @@ export function computeFinancials(b: BookingLike): BookingFinancials {
   return { hotel_sales, flight_sales, other_sales, total_sales, total_supplier_cost, gross_profit, margin };
 }
 
-// Sales staff must never see supplier cost / profit — strip those fields.
+// Sales staff must never see supplier cost / profit â€” strip those fields.
 export function redactForRole<T extends Record<string, unknown>>(booking: T, role: string): T {
   if (role !== "sales") return booking;
   const b: Record<string, unknown> = { ...booking };
@@ -108,7 +108,7 @@ export const RATE_BASES = [
   { value: "flat", label: "Flat" },
   { value: "per_pax", label: "Per Pax" },
   { value: "per_night", label: "Per Night" },
-  { value: "per_pax_night", label: "Per Pax × Night" },
+  { value: "per_pax_night", label: "Per Pax Ã— Night" },
 ] as const;
 
 export function basisFactor(basis: string | undefined, numPax: number, nights: number, rooms = 1): number {
@@ -149,7 +149,7 @@ export function recomputeService(s: Record<string, unknown>, numPax: number): Re
 
   let base: number;
   if (s.rate_basis && s.rate_basis !== "flat" && unit) {
-    base = unit * basisFactor(String(s.rate_basis), pax, nights, rooms);
+    base = unit * basisFactor(String(s.rate_basis), pax, nights, rooms) + customer_sc;
   } else if (customer_rate || customer_sc) {
     base = customer_rate + customer_sc;
   } else {
