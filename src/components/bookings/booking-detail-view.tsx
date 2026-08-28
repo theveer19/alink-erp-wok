@@ -24,6 +24,8 @@ import { SendConfirmationDialog } from "@/components/bookings/send-confirmation-
 import { PaymentDialog } from "@/components/bookings/payment-dialog";
 import { InvoiceDialog } from "@/components/bookings/invoice-dialog";
 import { AllotDialog } from "@/components/bookings/allot-dialog";
+import { CloseServiceDialog } from "@/components/bookings/close-service-dialog";
+import { CloseBookingDialog } from "@/components/bookings/close-booking-dialog";
 
 interface Props {
   booking: Booking;
@@ -49,6 +51,8 @@ export function BookingDetailView({ booking, role, demoExpiresOn }: Props) {
   const [payOpen, setPayOpen] = useState(false);
   const [invoiceOpen, setInvoiceOpen] = useState(false);
   const [allotRow, setAllotRow] = useState<ServiceRow | null>(null);
+  const [closeRow, setCloseRow] = useState<ServiceRow | null>(null);
+  const [closeBookingOpen, setCloseBookingOpen] = useState(false);
 
   const rows = useMemo(() => toServiceRows(booking), [booking]);
   const pax = useMemo(() => numPaxOf(booking as never), [booking]);
@@ -120,10 +124,7 @@ export function BookingDetailView({ booking, role, demoExpiresOn }: Props) {
       disabled: locked,
       reason: lockReason,
       separatorBefore: true,
-      onSelect: () => {
-        if (confirm("Close this booking? It cannot be edited afterwards (an admin can reopen it)."))
-          run({ action: "close_booking" }, "wf-close");
-      },
+      onSelect: () => setCloseBookingOpen(true),
     },
     {
       key: "wf-reopen",
@@ -201,10 +202,7 @@ export function BookingDetailView({ booking, role, demoExpiresOn }: Props) {
       hidden: !can(role, ["operations", "accounts"]),
       disabled: locked,
       reason: lockReason,
-      onSelect: () => {
-        if (confirm("Close this booking? It cannot be edited afterwards (an admin can reopen it)."))
-          run({ action: "close_booking" }, "close");
-      },
+      onSelect: () => setCloseBookingOpen(true),
     },
     {
       key: "duplicate",
@@ -306,12 +304,12 @@ export function BookingDetailView({ booking, role, demoExpiresOn }: Props) {
         onSelect: () => run({ action: "request_supplier", rowId: row.rowId }, `r-${row.rowId}`),
       },
       {
-        key: "extras",
-        label: row.kind === "flight" ? "Add seat / meal / baggage" : "Add extra services",
+        key: "close-service",
+        label: "Close service",
         hidden: !can(role, ["sales", "operations"]),
         disabled: locked || cancelled,
-        reason: lockReason,
-        onSelect: () => setEditRow({ row, focus: "extras" }),
+        reason: cancelled ? "This service has been cancelled" : lockReason,
+        onSelect: () => setCloseRow(row),
       },
       {
         key: "voucher",
@@ -649,6 +647,33 @@ export function BookingDetailView({ booking, role, demoExpiresOn }: Props) {
           onClose={() => setAllotRow(null)}
           onDone={() => {
             setAllotRow(null);
+            router.refresh();
+          }}
+        />
+      )}
+
+      {closeRow && (
+        <CloseServiceDialog
+          row={closeRow}
+          bookingId={booking.id}
+          role={role}
+          onClose={() => setCloseRow(null)}
+          onDone={() => {
+            setCloseRow(null);
+            router.refresh();
+          }}
+        />
+      )}
+
+      {closeBookingOpen && (
+        <CloseBookingDialog
+          bookingId={booking.id}
+          bookingNumber={booking.booking_number}
+          rows={rows}
+          totalSales={booking.financials?.total_sales}
+          onClose={() => setCloseBookingOpen(false)}
+          onDone={() => {
+            setCloseBookingOpen(false);
             router.refresh();
           }}
         />

@@ -29,8 +29,8 @@ export function InvoiceDialog({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [taxRate, setTaxRate] = useState("5");
-  const [gstBasis, setGstBasis] = useState<"total" | "service_charge">("service_charge");
+  const [taxRate, setTaxRate] = useState("18");
+  const [gstBasis, setGstBasis] = useState<"total" | "service_charge">("total");
   const [discount, setDiscount] = useState("0");
   const [invoiceDate, setInvoiceDate] = useState(new Date().toISOString().slice(0, 10));
   const [notes, setNotes] = useState("");
@@ -203,8 +203,12 @@ export function InvoiceDialog({
                 <span className="text-slate-800">− {inr(Number(discount || 0))}</span>
               </div>
               <div className="flex justify-between py-1">
-                <span className="text-slate-500">GST @ {taxRate || 0}%</span>
-                <span className="text-slate-800">{inr(t.tax)}</span>
+                <span className="text-slate-500">CGST @ {(Number(taxRate || 0) / 2).toFixed(1)}%</span>
+                <span className="text-slate-800">{inr(t.tax / 2)}</span>
+              </div>
+              <div className="flex justify-between py-1">
+                <span className="text-slate-500">SGST @ {(Number(taxRate || 0) / 2).toFixed(1)}%</span>
+                <span className="text-slate-800">{inr(t.tax / 2)}</span>
               </div>
               <div className="mt-2 flex justify-between border-t border-slate-200 pt-2 text-base">
                 <span className="font-semibold text-slate-700">Grand total</span>

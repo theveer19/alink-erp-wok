@@ -4,14 +4,15 @@ import { assertRole, errorResponse, getSessionProfile, HttpError } from "@/lib/a
 import { getBookingOr404, withTimeline } from "@/lib/booking-service.server";
 import { computeFinancials } from "@/lib/bookings";
 import { toServiceRows } from "@/lib/booking-actions";
+import { readCharges } from "@/lib/booking-charges";
 import type { Booking, InvoiceItemT } from "@/lib/types";
 
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 const num = (v: unknown) => Number(v || 0);
 
 const Body = z.object({
-  tax_rate: z.coerce.number().min(0).max(100).default(5),
-  gst_basis: z.enum(["total", "service_charge"]).default("service_charge"),
+  tax_rate: z.coerce.number().min(0).max(100).default(18),
+  gst_basis: z.enum(["total", "service_charge"]).default("total"),
   discount: z.coerce.number().min(0).default(0),
   notes: z.string().max(500).optional(),
   terms: z.string().max(1000).optional(),
@@ -45,6 +46,21 @@ function buildItems(booking: Booking): InvoiceItemT[] {
       return { description: parts.filter(Boolean).join(" · "), qty: 1, rate: amount, amount };
     });
 
+  // Extra charges get their own lines under the service they belong to.
+  for (const r of rows) {
+    if (r.status === "Cancelled") continue;
+    for (const c of readCharges(r.raw)) {
+      if (c.bearer !== "customer" || !c.amount) continue;
+      const amount = round2(c.amount);
+      items.push({
+        description: `   ${c.label}${c.remarks ? ` — ${c.remarks}` : ""}`,
+        qty: 1,
+        rate: amount,
+        amount,
+      });
+    }
+  }
+
   // Manual adjustments (charge-derived ones are not part of the service amount,
   // so they are added as their own lines).
   for (const a of booking.adjustments ?? []) {
@@ -68,8 +84,10 @@ function totals(items: InvoiceItemT[], b: Booking, opts: z.infer<typeof Body>) {
   const serviceCharge = round2(num(b.service_charge_total));
   const taxBase = opts.gst_basis === "service_charge" ? serviceCharge : afterDiscount;
   const tax_amount = round2((taxBase * num(opts.tax_rate)) / 100);
-  const grand_total = round2(afterDiscount + tax_amount);
-  return { subtotal, serviceCharge, tax_amount, grand_total };
+  const beforeRound = round2(afterDiscount + tax_amount);
+  const grand_total = Math.round(beforeRound);
+  const round_off = round2(grand_total - beforeRound);
+  return { subtotal, serviceCharge, tax_amount, grand_total, round_off };
 }
 
 /** Preview only — the dialog reads numbers from here; nothing is saved. */

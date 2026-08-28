@@ -60,6 +60,15 @@ export function InvoiceDetailView({ invoice, role }: { invoice: Invoice; role: R
   const contactPerson =
     cust?.contact_person && cust.contact_person !== (cust.company || cust.name) ? cust.contact_person : null;
 
+  let srNo = 0;
+
+  // Round off is whatever the stored grand total gained over the computed figure.
+  const computed =
+    Number(invoice.subtotal ?? 0) - Number(invoice.discount ?? 0) + Number(invoice.tax_amount ?? 0);
+  const roundOff = Number(invoice.grand_total ?? 0) - computed;
+  const halfTax = Number(invoice.tax_amount ?? 0) / 2;
+  const halfRate = Number(invoice.tax_rate ?? 0) / 2;
+
   const statusColor =
     invoice.status === "Paid"
       ? "bg-emerald-100 text-emerald-700"
@@ -156,6 +165,7 @@ export function InvoiceDetailView({ invoice, role }: { invoice: Invoice; role: R
           <table className="w-full border-collapse text-sm">
             <thead>
               <tr className="border-y border-slate-200 text-left">
+                <th className="w-10 py-2 font-semibold text-slate-600">Sr.</th>
                 <th className="py-2 font-semibold text-slate-600">Description</th>
                 <th className="w-16 py-2 text-right font-semibold text-slate-600">Qty</th>
                 <th className="w-28 py-2 text-right font-semibold text-slate-600">Rate</th>
@@ -163,14 +173,24 @@ export function InvoiceDetailView({ invoice, role }: { invoice: Invoice; role: R
               </tr>
             </thead>
             <tbody>
-              {(invoice.items ?? []).map((it, i) => (
-                <tr key={i} className="border-b border-slate-100">
-                  <td className="py-2 pr-2 text-slate-700">{it.description}</td>
-                  <td className="py-2 text-right text-slate-600">{it.qty}</td>
-                  <td className="py-2 text-right text-slate-600">{inr(it.rate)}</td>
-                  <td className="py-2 text-right font-medium text-slate-800">{inr(it.amount)}</td>
-                </tr>
-              ))}
+              {(invoice.items ?? []).map((it, i) => {
+                // Charge lines arrive indented; they hang under the service above them.
+                const sub = it.description.startsWith("   ");
+                if (!sub) srNo += 1;
+                return (
+                  <tr key={i} className="border-b border-slate-100">
+                    <td className="py-2 align-top text-slate-500">{sub ? "" : srNo}</td>
+                    <td className={`py-2 pr-2 ${sub ? "pl-6 text-slate-500" : "text-slate-700"}`}>
+                      {it.description.trim()}
+                    </td>
+                    <td className="py-2 text-right text-slate-600">{it.qty}</td>
+                    <td className="py-2 text-right text-slate-600">{inr(it.rate)}</td>
+                    <td className={`py-2 text-right ${sub ? "text-slate-600" : "font-medium text-slate-800"}`}>
+                      {inr(it.amount)}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
 
@@ -185,12 +205,26 @@ export function InvoiceDetailView({ invoice, role }: { invoice: Invoice; role: R
                 <span className="text-slate-800">− {inr(invoice.discount)}</span>
               </div>
             )}
-            <div className="flex justify-between py-1">
-              <span className="text-slate-500">
-                GST @ {invoice.tax_rate}%{invoice.gst_basis === "service_charge" ? " (service charge)" : ""}
+            <div className="flex justify-between border-t border-slate-200 py-1 pt-2">
+              <span className="font-medium text-slate-600">Taxable sub total</span>
+              <span className="font-medium text-slate-800">
+                {inr(Number(invoice.subtotal ?? 0) - Number(invoice.discount ?? 0))}
               </span>
-              <span className="text-slate-800">{inr(invoice.tax_amount)}</span>
             </div>
+            <div className="flex justify-between py-1">
+              <span className="text-slate-500">CGST @ {halfRate}%</span>
+              <span className="text-slate-800">{inr(halfTax)}</span>
+            </div>
+            <div className="flex justify-between py-1">
+              <span className="text-slate-500">SGST @ {halfRate}%</span>
+              <span className="text-slate-800">{inr(halfTax)}</span>
+            </div>
+            {Math.abs(roundOff) >= 0.005 && (
+              <div className="flex justify-between py-1">
+                <span className="text-slate-500">Round off</span>
+                <span className="text-slate-800">{roundOff > 0 ? "+" : "−"} {inr(Math.abs(roundOff))}</span>
+              </div>
+            )}
             <div className="flex justify-between border-t border-slate-300 py-2 text-base">
               <span className="font-semibold text-slate-700">Grand total</span>
               <span className="font-bold text-slate-900">{inr(invoice.grand_total)}</span>
@@ -204,6 +238,11 @@ export function InvoiceDetailView({ invoice, role }: { invoice: Invoice; role: R
               <span className="font-semibold text-slate-900">{inr(invoice.balance_due)}</span>
             </div>
           </div>
+
+          <p className="mt-3 text-xs text-slate-500">
+            Tax classification: Sales Taxable — {invoice.tax_rate}%
+            {invoice.gst_basis === "service_charge" ? " on service charge" : ""}
+          </p>
 
           {invoice.notes && (
             <section className="mt-6">

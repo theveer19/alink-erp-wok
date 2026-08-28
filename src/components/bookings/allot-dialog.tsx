@@ -2,7 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { X } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import { recomputeService } from "@/lib/bookings";
+import { CHARGE_PRESETS, newChargeId, readCharges, sumCharges, type Charge } from "@/lib/booking-charges";
 import type { ServiceRow } from "@/lib/booking-actions";
 
 interface Supplier {
@@ -47,6 +49,15 @@ export function AllotDialog({
   const [serviceCharge, setServiceCharge] = useState(String(row.raw.supplier_service_charge ?? ""));
   const [taxes, setTaxes] = useState(String(row.raw.taxes ?? ""));
   const [notify, setNotify] = useState(true);
+  // Rates are usually already on the service — keep them tucked away.
+  const [showRates, setShowRates] = useState(false);
+  const [charges, setCharges] = useState<Charge[]>(readCharges(row.raw));
+
+  const addCharge = () =>
+    setCharges((c) => [...c, { id: newChargeId(), label: "", amount: 0, bearer: "customer" }]);
+  const patchCharge = (id: string, p: Partial<Charge>) =>
+    setCharges((c) => c.map((x) => (x.id === id ? { ...x, ...p } : x)));
+  const removeCharge = (id: string) => setCharges((c) => c.filter((x) => x.id !== id));
 
   useEffect(() => {
     let alive = true;
@@ -125,6 +136,11 @@ export function AllotDialog({
           taxes: Number(taxes || 0),
         },
       });
+
+      const cleanCharges = charges.filter((c) => c.label.trim());
+      if (cleanCharges.length || readCharges(row.raw).length) {
+        await post({ action: "set_charges", rowId: row.rowId, charges: cleanCharges });
+      }
 
       if (notify) await post({ action: "request_supplier", rowId: row.rowId });
 
@@ -226,8 +242,16 @@ export function AllotDialog({
             ))}
           </div>
 
-          {/* ---- rates ---- */}
-          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+          {/* ---- rates (optional) ---- */}
+          <button
+            type="button"
+            onClick={() => setShowRates((v) => !v)}
+            className="mt-4 text-sm text-blue-600 hover:underline"
+          >
+            {showRates ? "Hide supplier rates" : "Supplier rates (optional — filled from the supplier master)"}
+          </button>
+
+          <div className={`mt-2 grid grid-cols-1 gap-3 sm:grid-cols-3 ${showRates ? "" : "hidden"}`}>
             <label>
               <span className="mb-1 block text-xs font-medium text-slate-500">Supplier rate</span>
               <input
@@ -258,6 +282,105 @@ export function AllotDialog({
                 className="w-full rounded border border-slate-300 px-3 py-2 text-right text-sm focus:border-blue-500 focus:outline-none"
               />
             </label>
+          </div>
+
+          {/* ---- charges ---- */}
+          <div className="mt-5">
+            <div className="mb-2 flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-slate-700">Charges</h3>
+              <span className="text-sm text-slate-500">
+                Customer <span className="font-semibold text-slate-800">{inr(sumCharges(charges, "customer"))}</span>
+                {" · "}Supplier{" "}
+                <span className="font-semibold text-slate-800">{inr(sumCharges(charges, "supplier"))}</span>
+              </span>
+            </div>
+
+            <div className="overflow-hidden rounded border border-slate-200">
+              <table className="w-full border-collapse text-sm">
+                <thead className="bg-slate-50">
+                  <tr className="text-left text-slate-600">
+                    <th className="w-48 px-3 py-2 font-semibold">Item</th>
+                    <th className="px-3 py-2 font-semibold">Description</th>
+                    <th className="w-28 px-3 py-2 text-right font-semibold">Amount</th>
+                    <th className="w-36 px-3 py-2 font-semibold">Billed to</th>
+                    <th className="w-10 px-2 py-2" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {charges.length === 0 && (
+                    <tr>
+                      <td colSpan={5} className="px-3 py-4 text-center text-sm text-slate-500">
+                        No charges. Add extra bed, meal, seat, baggage, toll and anything else billable.
+                      </td>
+                    </tr>
+                  )}
+                  {charges.map((c) => (
+                    <tr key={c.id} className="border-t border-slate-100">
+                      <td className="px-3 py-2">
+                        <input
+                          list="allot-charge-presets"
+                          value={c.label}
+                          onChange={(e) => patchCharge(c.id, { label: e.target.value })}
+                          placeholder="Select or type"
+                          className="w-full rounded border border-slate-300 px-2 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
+                        />
+                      </td>
+                      <td className="px-3 py-2">
+                        <input
+                          value={c.remarks ?? ""}
+                          onChange={(e) => patchCharge(c.id, { remarks: e.target.value })}
+                          placeholder="Add description (optional)"
+                          className="w-full rounded border border-slate-300 px-2 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
+                        />
+                      </td>
+                      <td className="px-3 py-2">
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={c.amount || ""}
+                          onChange={(e) => patchCharge(c.id, { amount: Number(e.target.value) })}
+                          className="w-full rounded border border-slate-300 px-2 py-1.5 text-right text-sm focus:border-blue-500 focus:outline-none"
+                        />
+                      </td>
+                      <td className="px-3 py-2">
+                        <select
+                          value={c.bearer}
+                          onChange={(e) => patchCharge(c.id, { bearer: e.target.value as Charge["bearer"] })}
+                          className="w-full rounded border border-slate-300 px-2 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
+                        >
+                          <option value="customer">Customer</option>
+                          <option value="supplier">Supplier cost</option>
+                        </select>
+                      </td>
+                      <td className="px-2 py-2 text-right">
+                        <button
+                          type="button"
+                          onClick={() => removeCharge(c.id)}
+                          aria-label="Remove charge"
+                          className="rounded p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <datalist id="allot-charge-presets">
+              {CHARGE_PRESETS.map((p) => (
+                <option key={p} value={p} />
+              ))}
+            </datalist>
+
+            <button
+              type="button"
+              onClick={addCharge}
+              className="mt-2 inline-flex items-center gap-1 rounded border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+            >
+              <Plus className="h-4 w-4" /> Add charge
+            </button>
           </div>
 
           <div className="mt-4 flex flex-wrap items-center gap-4 rounded bg-slate-50 p-3 text-sm">

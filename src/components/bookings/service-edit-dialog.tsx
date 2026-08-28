@@ -146,6 +146,9 @@ export function ServiceEditDialog({
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">{row.kind}</p>
             <h2 className="text-lg font-semibold text-slate-800">{row.title}</h2>
+          {focus === "supplier" && (
+            <p className="text-sm text-slate-500">Supplier and rates only</p>
+          )}
           </div>
           <button type="button" onClick={onClose} aria-label="Close" className="rounded p-1 hover:bg-slate-100">
             <X className="h-5 w-5 text-slate-500" />
@@ -153,18 +156,19 @@ export function ServiceEditDialog({
         </div>
 
         <div className="flex-1 space-y-4 overflow-y-auto p-5">
-          {section(
-            "Service details",
-            false,
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              {fields.map((f) => (
-                <label key={f.key} className={f.type === "textarea" ? "sm:col-span-2" : ""}>
-                  <span className="mb-1 block text-xs font-medium text-slate-500">{f.label}</span>
-                  {input(f)}
-                </label>
-              ))}
-            </div>,
-          )}
+          {focus !== "supplier" &&
+            section(
+              "Service details",
+              false,
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {fields.map((f) => (
+                  <label key={f.key} className={f.type === "textarea" ? "sm:col-span-2" : ""}>
+                    <span className="mb-1 block text-xs font-medium text-slate-500">{f.label}</span>
+                    {input(f)}
+                  </label>
+                ))}
+              </div>,
+            )}
 
           {section(
             "Customer rate",
