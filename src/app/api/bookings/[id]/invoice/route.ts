@@ -22,33 +22,49 @@ const Body = z.object({
 /** Builds invoice lines from the booking's services and adjustments. */
 function buildItems(booking: Booking): InvoiceItemT[] {
   const rows = toServiceRows(booking);
-  const items: InvoiceItemT[] = rows
-    .filter((r) => r.status !== "Cancelled")
-    .map((r) => {
-      const amount = round2(num(r.raw.customer_selling_amount));
-      const parts: string[] = [r.title];
+  const items: InvoiceItemT[] = [];
 
-      if (r.kind === "hotel") {
-        const inTime = String(r.raw.check_in_time ?? "14:00");
-        const outTime = String(r.raw.check_out_time ?? "11:00");
-        parts.push(r.detail);
-        parts.push(`Check-in ${r.date ?? "—"} ${inTime} → Check-out ${r.endDate ?? "—"} ${outTime}`);
-        if (r.city) parts.push(r.city);
-      } else if (r.kind === "flight") {
-        parts.push(r.address || r.detail);
-        parts.push(`${r.date ?? "—"}${r.time ? ` ${r.time}` : ""}`);
-        if (r.raw.pnr) parts.push(`PNR ${String(r.raw.pnr)}`);
-      } else {
-        parts.push(r.detail);
-        if (r.date) parts.push(r.date);
-      }
-
-      return { description: parts.filter(Boolean).join(" · "), qty: 1, rate: amount, amount };
-    });
-
-  // Extra charges get their own lines under the service they belong to.
   for (const r of rows) {
     if (r.status === "Cancelled") continue;
+
+    const selling = round2(num(r.raw.customer_selling_amount));
+    const serviceCharge = round2(num(r.raw.customer_service_charge));
+    const seat = round2(num(r.raw.seat_fee));
+    const meal = round2(num(r.raw.meal_fee));
+    const baggage = round2(num(r.raw.fast_forward_fee));
+    // Whatever is left after the add-ons is the fare itself.
+    const fare = round2(selling - serviceCharge - seat - meal - baggage);
+
+    const parts: string[] = [r.title];
+    if (r.kind === "hotel") {
+      const inTime = String(r.raw.check_in_time ?? "14:00");
+      const outTime = String(r.raw.check_out_time ?? "11:00");
+      parts.push(r.detail);
+      parts.push(`Check-in ${r.date ?? "—"} ${inTime} → Check-out ${r.endDate ?? "—"} ${outTime}`);
+      if (r.city) parts.push(r.city);
+    } else if (r.kind === "flight") {
+      parts.push(r.address || r.detail);
+      parts.push(`${r.date ?? "—"}${r.time ? ` ${r.time}` : ""}`);
+      if (r.raw.pnr) parts.push(`PNR ${String(r.raw.pnr)}`);
+    } else {
+      parts.push(r.detail);
+      if (r.date) parts.push(r.date);
+    }
+
+    items.push({ description: parts.filter(Boolean).join(" · "), qty: 1, rate: fare, amount: fare });
+
+    // Add-ons ride under the service as their own indented lines.
+    const addOns: [string, number][] = [
+      ["Service charge", serviceCharge],
+      ["Seat fee", seat],
+      ["Meal fee", meal],
+      ["Baggage / fast forward", baggage],
+    ];
+    for (const [label, amount] of addOns) {
+      if (!amount) continue;
+      items.push({ description: `   ${label}`, qty: 1, rate: amount, amount });
+    }
+
     for (const c of readCharges(r.raw)) {
       if (c.bearer !== "customer" || !c.amount) continue;
       const amount = round2(c.amount);
@@ -60,6 +76,7 @@ function buildItems(booking: Booking): InvoiceItemT[] {
       });
     }
   }
+
 
   // Manual adjustments only. Charge-derived ones (ref "charge:…") are written
   // out by the loop below, so counting them here would bill twice.

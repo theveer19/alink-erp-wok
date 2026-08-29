@@ -68,7 +68,9 @@ export function CloseServiceDialog({
   const [supplierId, setSupplierId] = useState(String(row.raw.supplier_id ?? ""));
   const [rate, setRate] = useState(String(row.raw.supplier_rate ?? ""));
   const [serviceCharge, setServiceCharge] = useState(String(row.raw.supplier_service_charge ?? ""));
-  const [taxes, setTaxes] = useState(String(row.raw.taxes ?? ""));
+  const [supSeatFee, setSupSeatFee] = useState(String(row.raw.supplier_seat_fee ?? ""));
+  const [supMealFee, setSupMealFee] = useState(String(row.raw.supplier_meal_fee ?? ""));
+  const [supBaggageFee, setSupBaggageFee] = useState(String(row.raw.supplier_fast_forward_fee ?? ""));
 
   // Mirror keeps the supplier figures equal to the customer ones until the
   // supplier's real rate is known — buying at cost, zero margin, no surprises.
@@ -101,15 +103,29 @@ export function CloseServiceDialog({
     setCustRate(v);
     if (mirror) setRate(v);
   };
-  const setCustomerServiceCharge = (v: string) => {
-    setCustServiceCharge(v);
-    if (mirror) setServiceCharge(v);
+  // Service charge is our own margin — it never belongs on the supplier side.
+  const setCustomerServiceCharge = (v: string) => setCustServiceCharge(v);
+
+  const setSeat = (v: string) => {
+    setSeatFee(v);
+    if (mirror) setSupSeatFee(v);
   };
+  const setMeal = (v: string) => {
+    setMealFee(v);
+    if (mirror) setSupMealFee(v);
+  };
+  const setBaggage = (v: string) => {
+    setBaggageFee(v);
+    if (mirror) setSupBaggageFee(v);
+  };
+
   const toggleMirror = (on: boolean) => {
     setMirror(on);
     if (on) {
       setRate(custRate);
-      setServiceCharge(custServiceCharge);
+      setSupSeatFee(seatFee);
+      setSupMealFee(mealFee);
+      setSupBaggageFee(baggageFee);
     }
   };
 
@@ -140,9 +156,27 @@ export function CloseServiceDialog({
       fast_forward_fee: Number(baggageFee || 0),
       supplier_rate: Number(rate || 0),
       supplier_service_charge: Number(serviceCharge || 0),
-      taxes: Number(taxes || 0),
+      supplier_seat_fee: Number(supSeatFee || 0),
+      supplier_meal_fee: Number(supMealFee || 0),
+      supplier_fast_forward_fee: Number(supBaggageFee || 0),
+      // recomputeService reads other_charges, so the supplier fees ride along there.
+      other_charges_manual: Number(supSeatFee || 0) + Number(supMealFee || 0) + Number(supBaggageFee || 0),
+      other_charges: Number(supSeatFee || 0) + Number(supMealFee || 0) + Number(supBaggageFee || 0),
     }),
-    [row.raw, basis, custRate, custServiceCharge, seatFee, mealFee, baggageFee, rate, serviceCharge, taxes, charges],
+    [
+      row.raw,
+      basis,
+      custRate,
+      custServiceCharge,
+      seatFee,
+      mealFee,
+      baggageFee,
+      rate,
+      serviceCharge,
+      supSeatFee,
+      supMealFee,
+      supBaggageFee,
+    ],
   );
 
   const preview = useMemo(() => recomputeService(draft, numPax), [draft, numPax]);
@@ -199,7 +233,10 @@ export function CloseServiceDialog({
         fields.supplier_contact = picked?.mobile ?? picked?.contact_person ?? row.raw.supplier_contact ?? null;
         fields.supplier_rate = Number(rate || 0);
         fields.supplier_service_charge = Number(serviceCharge || 0);
-        fields.taxes = Number(taxes || 0);
+        fields.supplier_seat_fee = Number(supSeatFee || 0);
+        fields.supplier_meal_fee = Number(supMealFee || 0);
+        fields.supplier_fast_forward_fee = Number(supBaggageFee || 0);
+        fields.other_charges_manual = Number(supSeatFee || 0) + Number(supMealFee || 0) + Number(supBaggageFee || 0);
       }
 
       await post({ action: "update_service", rowId: row.rowId, fields });
@@ -281,7 +318,7 @@ export function CloseServiceDialog({
                     type="number"
                     step="0.01"
                     value={seatFee}
-                    onChange={(e) => setSeatFee(e.target.value)}
+                    onChange={(e) => setSeat(e.target.value)}
                     className="w-full rounded border border-slate-300 px-3 py-2 text-right text-sm focus:border-blue-500 focus:outline-none"
                   />
                 </label>
@@ -291,7 +328,7 @@ export function CloseServiceDialog({
                     type="number"
                     step="0.01"
                     value={mealFee}
-                    onChange={(e) => setMealFee(e.target.value)}
+                    onChange={(e) => setMeal(e.target.value)}
                     className="w-full rounded border border-slate-300 px-3 py-2 text-right text-sm focus:border-blue-500 focus:outline-none"
                   />
                 </label>
@@ -301,7 +338,7 @@ export function CloseServiceDialog({
                     type="number"
                     step="0.01"
                     value={baggageFee}
-                    onChange={(e) => setBaggageFee(e.target.value)}
+                    onChange={(e) => setBaggage(e.target.value)}
                     className="w-full rounded border border-slate-300 px-3 py-2 text-right text-sm focus:border-blue-500 focus:outline-none"
                   />
                 </label>
@@ -312,10 +349,10 @@ export function CloseServiceDialog({
               <>
                 <label className="mt-3 flex items-center gap-2 text-sm text-slate-700">
                   <input type="checkbox" checked={mirror} onChange={(e) => toggleMirror(e.target.checked)} />
-                  Copy these amounts to the supplier side
+                  Copy rate and fees to the supplier side
                 </label>
                 <p className="mt-1 text-xs text-slate-500">
-                  Keep this on until the supplier confirms their rate, then switch it off and enter the real cost.
+                  Rate, seat, meal and baggage get copied. Your service charge stays on the customer side only.
                 </p>
               </>
             )}
@@ -342,7 +379,7 @@ export function CloseServiceDialog({
                 </select>
               </label>
 
-              <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <label>
                   <span className="mb-1 block text-xs font-medium text-slate-500">Supplier rate</span>
                   <input
@@ -369,17 +406,51 @@ export function CloseServiceDialog({
                     className="w-full rounded border border-slate-300 px-3 py-2 text-right text-sm focus:border-blue-500 focus:outline-none"
                   />
                 </label>
-                <label>
-                  <span className="mb-1 block text-xs font-medium text-slate-500">Taxes</span>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={taxes}
-                    onChange={(e) => setTaxes(e.target.value)}
-                    className="w-full rounded border border-slate-300 px-3 py-2 text-right text-sm focus:border-blue-500 focus:outline-none"
-                  />
-                </label>
               </div>
+
+              {row.kind === "flight" && (
+                <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <label>
+                    <span className="mb-1 block text-xs font-medium text-slate-500">Seat fee</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={supSeatFee}
+                      onChange={(e) => {
+                        setMirror(false);
+                        setSupSeatFee(e.target.value);
+                      }}
+                      className="w-full rounded border border-slate-300 px-3 py-2 text-right text-sm focus:border-blue-500 focus:outline-none"
+                    />
+                  </label>
+                  <label>
+                    <span className="mb-1 block text-xs font-medium text-slate-500">Meal fee</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={supMealFee}
+                      onChange={(e) => {
+                        setMirror(false);
+                        setSupMealFee(e.target.value);
+                      }}
+                      className="w-full rounded border border-slate-300 px-3 py-2 text-right text-sm focus:border-blue-500 focus:outline-none"
+                    />
+                  </label>
+                  <label>
+                    <span className="mb-1 block text-xs font-medium text-slate-500">Baggage / fast forward</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={supBaggageFee}
+                      onChange={(e) => {
+                        setMirror(false);
+                        setSupBaggageFee(e.target.value);
+                      }}
+                      className="w-full rounded border border-slate-300 px-3 py-2 text-right text-sm focus:border-blue-500 focus:outline-none"
+                    />
+                  </label>
+                </div>
+              )}
             </div>
           )}
 

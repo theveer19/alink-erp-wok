@@ -60,11 +60,11 @@ const Body = z.object({
 });
 
 function parseRowId(rowId: string | undefined) {
-  if (!rowId) throw new HttpError(400, "rowId is required for this action");
+  if (!rowId) throw new HttpError(400, "rowId chahiye is action ke liye");
   const [kind, idxRaw] = rowId.split(":");
-  if (!(kind in SERVICE_KEYS)) throw new HttpError(400, "Invalid service type");
+  if (!(kind in SERVICE_KEYS)) throw new HttpError(400, "Galat service type");
   const index = Number(idxRaw);
-  if (!Number.isInteger(index) || index < 0) throw new HttpError(400, "Invalid service index");
+  if (!Number.isInteger(index) || index < 0) throw new HttpError(400, "Galat service index");
   return { kind: kind as ServiceKind, key: SERVICE_KEYS[kind as ServiceKind], index };
 }
 
@@ -106,7 +106,7 @@ const BOOKING_EDIT_FIELDS = new Set([
   "service_charge_total",
 ]);
 
-/** Keeps the old number's prefix and appends a new suffix. Change here for your own scheme. */
+/** Purane number ka prefix rakh ke naya number banata hai. Apna scheme ho to yahan badal do. */
 function nextBookingNumber(old: string): string {
   const m = /^([A-Za-z\-\/]*)/.exec(old || "");
   const prefix = m?.[1] || "BK-";
@@ -117,7 +117,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   try {
     const { id } = params;
     const { profile, supabase } = await getSessionProfile();
-    if (!profile) throw new HttpError(401, "Please sign in");
+    if (!profile) throw new HttpError(401, "Login karo");
 
     const { action, rowId, kind, labels, charges, fields, supplier } = Body.parse(await req.json());
     const booking = await getBookingOr404(supabase, id);
@@ -127,22 +127,23 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     // ---------------- Booking-level ----------------
     if (action === "delete_booking") {
       assertRole(profile.role, []);
-      if (booking.invoice_id) throw new HttpError(423, "An invoice is attached — remove the invoice first");
+      if (booking.invoice_id) throw new HttpError(423, "Invoice attached hai — pehle invoice hatao");
       const { error } = await supabase.from("bookings").delete().eq("id", id);
       if (error) throw new HttpError(500, error.message);
       return NextResponse.json({ ok: true, redirect: "/bookings" });
     }
 
     if (action === "reopen_booking") {
-      assertRole(profile.role, []); // admin / super_admin only
+      assertRole(profile.role, []); // sirf admin / super_admin
       if (booking.invoice_id) {
-        throw new HttpError(423, "Cancel or delete the invoice before reopening this booking");
+        throw new HttpError(423, "Pehle invoice cancel/delete karo, tab booking reopen hogi");
       }
       const { error } = await supabase
         .from("bookings")
         .update({
           status: "Pending Operations",
-          timeline: withTimeline(booking.timeline, actor, `Booking reopened (tha: ${booking.status})`),
+          rates_locked: false,
+          timeline: withTimeline(booking.timeline, actor, `Booking reopened (was: ${booking.status})`),
         })
         .eq("id", id);
       if (error) throw new HttpError(500, error.message);
@@ -176,7 +177,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
         internal_remarks: booking.internal_remarks,
         status: "Enquiry",
         payment_status: "Unpaid",
-        // services are copied but supplier confirmations and statuses are reset
+        // services copy hoti hain lekin supplier confirmation aur status reset
         hotels: ((booking.hotels as Svc[]) ?? []).map((s) => ({ ...s, status: "Pending", confirmation_number: null })),
         flights: ((booking.flights as Svc[]) ?? []).map((s) => ({ ...s, status: "Pending", pnr: null })),
         others: ((booking.others as Svc[]) ?? []).map((s) => ({ ...s, status: "Pending" })),
@@ -212,13 +213,23 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       assertRole(profile.role, ["operations", "accounts"]);
       const pending = ["hotels", "flights", "others"]
         .flatMap((k) => (booking[k] as Svc[]) ?? [])
-        .filter((s) => s.status !== "Confirmed" && s.status !== "Cancelled");
+        .filter((s) => !["Confirmed", "Completed", "Cancelled"].includes(String(s.status)));
       if (pending.length > 0) {
-        throw new HttpError(409, `${pending.length} service(s) are not confirmed yet — confirm or cancel them first`);
+        throw new HttpError(409, `${pending.length} service abhi confirm nahi hui — pehle unhe confirm ya cancel karo`);
       }
+      // Closing finishes the services too — confirmed means "supplier said yes",
+      // completed means "travel is done and it is ready to bill".
+      const closedPatch: Record<string, unknown> = {};
+      for (const key of ["hotels", "flights", "others"] as const) {
+        closedPatch[key] = ((booking[key] as Svc[]) ?? []).map((s) =>
+          s.status === "Cancelled" ? s : { ...s, status: "Completed" },
+        );
+      }
+
       const { error } = await supabase
         .from("bookings")
         .update({
+          ...closedPatch,
           status: "Closed",
           rates_locked: true,
           timeline: withTimeline(booking.timeline, actor, "Booking closed"),
@@ -229,7 +240,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     }
 
     if (action === "send_confirmation") {
-      // Actual sending happens in /api/bookings/[id]/notify; this only records it.
+      // Asli bhejna /api/bookings/[id]/notify karta hai; ye sirf record ke liye.
       assertRole(profile.role, ["sales", "operations"]);
       const { error } = await supabase
         .from("bookings")
@@ -248,7 +259,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
       const patch: Record<string, unknown> = {};
       for (const [k, v] of Object.entries(fields ?? {})) if (BOOKING_EDIT_FIELDS.has(k)) patch[k] = v;
-      if (Object.keys(patch).length === 0) throw new HttpError(400, "Nothing to update");
+      if (Object.keys(patch).length === 0) throw new HttpError(400, "Kuch change nahi mila");
 
       patch.timeline = withTimeline(booking.timeline, actor, "Booking details updated");
       const { error } = await supabase.from("bookings").update(patch).eq("id", id);
@@ -259,7 +270,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     if (action === "add_service") {
       assertRole(profile.role, ["sales", "operations"]);
       await assertNotInvoiceLocked(supabase, id, profile.role);
-      if (!kind) throw new HttpError(400, "kind is required (hotel/flight/other)");
+      if (!kind) throw new HttpError(400, "kind chahiye (hotel/flight/other)");
 
       const key = SERVICE_KEYS[kind];
       const blank: Svc = {
@@ -329,7 +340,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     const { key, index } = parseRowId(rowId);
     const list = ((booking[key] as Svc[]) ?? []).slice();
     const svc = list[index];
-    if (!svc) throw new HttpError(404, "Service not found");
+    if (!svc) throw new HttpError(404, "Service nahi mili");
 
     const saveList = async (nextList: Svc[], note: string) => {
       const nextBooking = { ...booking, [key]: nextList };
@@ -372,7 +383,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     if (action === "assign_supplier") {
       assertRole(profile.role, ["operations"]);
       await assertNotInvoiceLocked(supabase, id, profile.role);
-      if (!supplier?.supplier_name) throw new HttpError(400, "Select a supplier");
+      if (!supplier?.supplier_name) throw new HttpError(400, "Supplier chuno");
       const recomputed = recomputeService({ ...svc, ...supplier }, pax);
       return saveService(recomputed, `Supplier "${supplier.supplier_name}" assigned to ${key.slice(0, -1)} #${index + 1}`);
     }
@@ -381,7 +392,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       assertRole(profile.role, ["sales", "operations"]);
       await assertNotInvoiceLocked(supabase, id, profile.role);
       if (booking.rates_locked && profile.role === "sales") {
-        throw new HttpError(423, "Rates are locked — ask operations to update them");
+        throw new HttpError(423, "Rates lock hain — operations se update karwao");
       }
 
       const patch: Svc = { ...(fields ?? {}) };
@@ -408,8 +419,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
             ? "Supplier Requested"
             : "Cancelled";
 
-    if (action === "request_supplier" && !svc.supplier_name) throw new HttpError(400, "Assign a supplier first");
-    if (svc.status === "Cancelled") throw new HttpError(409, "This service is already cancelled");
+    if (action === "request_supplier" && !svc.supplier_name) throw new HttpError(400, "Pehle supplier assign karo");
+    if (svc.status === "Cancelled") throw new HttpError(409, "Ye service already cancelled hai");
 
     list[index] = {
       ...svc,

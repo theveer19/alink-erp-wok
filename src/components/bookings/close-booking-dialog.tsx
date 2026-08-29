@@ -28,7 +28,7 @@ export function CloseBookingDialog({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const pending = rows.filter((r) => r.status !== "Confirmed" && r.status !== "Cancelled");
+  const pending = rows.filter((r) => !["Confirmed", "Completed", "Cancelled"].includes(r.status));
   const blocked = pending.length > 0;
   const cust = booking.customer_snapshot;
 
