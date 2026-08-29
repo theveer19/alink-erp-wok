@@ -36,6 +36,7 @@ const Body = z.object({
     "add_service",
     "remove_service",
     "confirm_service",
+    "complete_service",
     "unconfirm_service",
     "request_supplier",
     "cancel_service",
@@ -413,11 +414,13 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     const nextStatus =
       action === "confirm_service"
         ? "Confirmed"
-        : action === "unconfirm_service"
-          ? "Pending"
-          : action === "request_supplier"
-            ? "Supplier Requested"
-            : "Cancelled";
+        : action === "complete_service"
+          ? "Completed"
+          : action === "unconfirm_service"
+            ? "Pending"
+            : action === "request_supplier"
+              ? "Supplier Requested"
+              : "Cancelled";
 
     if (action === "request_supplier" && !svc.supplier_name) throw new HttpError(400, "Pehle supplier assign karo");
     if (svc.status === "Cancelled") throw new HttpError(409, "Ye service already cancelled hai");
@@ -430,7 +433,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
     const all = ["hotels", "flights", "others"].flatMap((k) => (k === key ? list : ((booking[k] as Svc[]) ?? [])));
     const live = all.filter((s) => s.status !== "Cancelled");
-    const confirmed = live.filter((s) => s.status === "Confirmed").length;
+    const confirmed = live.filter((s) => ["Confirmed", "Completed"].includes(String(s.status))).length;
 
     let bookingStatus = booking.status;
     if (live.length === 0) bookingStatus = "Cancelled";

@@ -241,8 +241,8 @@ export function CloseServiceDialog({
 
       await post({ action: "update_service", rowId: row.rowId, fields });
       await post({ action: "set_charges", rowId: row.rowId, charges: charges.filter((c) => c.label.trim()) });
-      if (alsoConfirm && row.status !== "Confirmed") {
-        await post({ action: "confirm_service", rowId: row.rowId });
+      if (alsoConfirm && row.status !== "Completed") {
+        await post({ action: "complete_service", rowId: row.rowId });
       }
       onDone();
     } catch (e) {
