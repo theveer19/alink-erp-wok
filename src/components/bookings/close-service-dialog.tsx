@@ -62,6 +62,8 @@ export function CloseServiceDialog({
   const [seatFee, setSeatFee] = useState(String(row.raw.seat_fee ?? ""));
   const [mealFee, setMealFee] = useState(String(row.raw.meal_fee ?? ""));
   const [baggageFee, setBaggageFee] = useState(String(row.raw.fast_forward_fee ?? ""));
+  const [feeNote, setFeeNote] = useState(String(row.raw.fee_note ?? ""));
+  const [pnr, setPnr] = useState(String(row.raw.pnr ?? ""));
 
   // ---- supplier side ----
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -225,6 +227,8 @@ export function CloseServiceDialog({
         seat_fee: Number(seatFee || 0),
         meal_fee: Number(mealFee || 0),
         fast_forward_fee: Number(baggageFee || 0),
+        fee_note: feeNote,
+        pnr: pnr.trim().toUpperCase() || null,
         remarks,
       };
       if (canSupplier) {
@@ -343,6 +347,29 @@ export function CloseServiceDialog({
                   />
                 </label>
               </div>
+            )}
+
+            <label className="mt-3 block">
+              <span className="mb-1 block text-xs font-medium text-slate-500">
+                Note on fees (waivers, discounts, anything to explain on the bill)
+              </span>
+              <input
+                value={feeNote}
+                onChange={(e) => setFeeNote(e.target.value)}
+                placeholder="e.g. seat fee waived for this passenger"
+                className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+              />
+            </label>
+
+            {row.kind === "flight" && (
+              <label className="mt-3 block sm:w-1/3">
+                <span className="mb-1 block text-xs font-medium text-slate-500">PNR</span>
+                <input
+                  value={pnr}
+                  onChange={(e) => setPnr(e.target.value)}
+                  className="w-full rounded border border-slate-300 px-3 py-2 text-sm uppercase focus:border-blue-500 focus:outline-none"
+                />
+              </label>
             )}
 
             {canSupplier && (

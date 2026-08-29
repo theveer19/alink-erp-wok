@@ -174,19 +174,30 @@ export function InvoiceDetailView({ invoice, role }: { invoice: Invoice; role: R
             </thead>
             <tbody>
               {(invoice.items ?? []).map((it, i) => {
-                // Charge lines arrive indented; they hang under the service above them.
-                const sub = it.description.startsWith("   ");
-                if (!sub) srNo += 1;
+                // Indentation carries the hierarchy: service, then passenger, then add-on.
+                const deep = it.description.startsWith("      ");
+                const sub = !deep && it.description.startsWith("   ");
+                const head = !deep && !sub;
+                if (head) srNo += 1;
+                const blank = head && Number(it.amount) === 0;
                 return (
                   <tr key={i} className="border-b border-slate-100">
-                    <td className="py-2 align-top text-slate-500">{sub ? "" : srNo}</td>
-                    <td className={`py-2 pr-2 ${sub ? "pl-6 text-slate-500" : "text-slate-700"}`}>
+                    <td className="py-2 align-top text-slate-500">{head ? srNo : ""}</td>
+                    <td
+                      className={`py-2 pr-2 ${
+                        deep
+                          ? "pl-10 text-slate-500"
+                          : sub
+                            ? "pl-6 text-slate-700"
+                            : "font-medium text-slate-800"
+                      }`}
+                    >
                       {it.description.trim()}
                     </td>
-                    <td className="py-2 text-right text-slate-600">{it.qty}</td>
-                    <td className="py-2 text-right text-slate-600">{inr(it.rate)}</td>
-                    <td className={`py-2 text-right ${sub ? "text-slate-600" : "font-medium text-slate-800"}`}>
-                      {inr(it.amount)}
+                    <td className="py-2 text-right text-slate-600">{blank ? "" : it.qty}</td>
+                    <td className="py-2 text-right text-slate-600">{blank ? "" : inr(it.rate)}</td>
+                    <td className={`py-2 text-right ${head ? "font-medium text-slate-800" : "text-slate-600"}`}>
+                      {blank ? "" : inr(it.amount)}
                     </td>
                   </tr>
                 );

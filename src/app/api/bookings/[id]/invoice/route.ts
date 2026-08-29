@@ -24,6 +24,20 @@ function buildItems(booking: Booking): InvoiceItemT[] {
   const rows = toServiceRows(booking);
   const items: InvoiceItemT[] = [];
 
+  const paxNames: string[] = (booking.passengers ?? [])
+    .map((p) => String((p as Record<string, unknown>).name ?? "").trim())
+    .filter(Boolean);
+  const paxCount = Math.max(paxNames.length, Number(booking.num_travellers) || 1);
+
+  /** Split a total across passengers; the first one absorbs the rounding. */
+  const split = (total: number, n: number): number[] => {
+    if (n <= 1) return [round2(total)];
+    const each = round2(Math.floor((total / n) * 100) / 100);
+    const parts = Array(n).fill(each);
+    parts[0] = round2(total - each * (n - 1));
+    return parts;
+  };
+
   for (const r of rows) {
     if (r.status === "Cancelled") continue;
 
@@ -32,37 +46,51 @@ function buildItems(booking: Booking): InvoiceItemT[] {
     const seat = round2(num(r.raw.seat_fee));
     const meal = round2(num(r.raw.meal_fee));
     const baggage = round2(num(r.raw.fast_forward_fee));
-    // Whatever is left after the add-ons is the fare itself.
     const fare = round2(selling - serviceCharge - seat - meal - baggage);
+    const feeNote = String(r.raw.fee_note ?? "").trim();
 
-    const parts: string[] = [r.title];
+    // Header line carries the trip facts; it holds no amount of its own.
+    const head: string[] = [r.title];
     if (r.kind === "hotel") {
       const inTime = String(r.raw.check_in_time ?? "14:00");
       const outTime = String(r.raw.check_out_time ?? "11:00");
-      parts.push(r.detail);
-      parts.push(`Check-in ${r.date ?? "—"} ${inTime} → Check-out ${r.endDate ?? "—"} ${outTime}`);
-      if (r.city) parts.push(r.city);
+      head.push(r.detail);
+      head.push(`Check-in ${r.date ?? "—"} ${inTime} → Check-out ${r.endDate ?? "—"} ${outTime}`);
+      if (r.city) head.push(r.city);
     } else if (r.kind === "flight") {
-      parts.push(r.address || r.detail);
-      parts.push(`${r.date ?? "—"}${r.time ? ` ${r.time}` : ""}`);
-      if (r.raw.pnr) parts.push(`PNR ${String(r.raw.pnr)}`);
+      head.push(r.address || r.detail);
+      head.push(`${r.date ?? "—"}${r.time ? ` ${r.time}` : ""}`);
+      if (r.raw.class) head.push(String(r.raw.class));
+      if (r.raw.pnr) head.push(`PNR ${String(r.raw.pnr)}`);
     } else {
-      parts.push(r.detail);
-      if (r.date) parts.push(r.date);
+      head.push(r.detail);
+      if (r.date) head.push(r.date);
     }
+    head.push(`${paxCount} pax`);
 
-    items.push({ description: parts.filter(Boolean).join(" · "), qty: 1, rate: fare, amount: fare });
+    const fareParts = split(fare, paxCount);
+    const scParts = split(serviceCharge, paxCount);
+    const seatParts = split(seat, paxCount);
+    const mealParts = split(meal, paxCount);
+    const bagParts = split(baggage, paxCount);
 
-    // Add-ons ride under the service as their own indented lines.
-    const addOns: [string, number][] = [
-      ["Service charge", serviceCharge],
-      ["Seat fee", seat],
-      ["Meal fee", meal],
-      ["Baggage / fast forward", baggage],
-    ];
-    for (const [label, amount] of addOns) {
-      if (!amount) continue;
-      items.push({ description: `   ${label}`, qty: 1, rate: amount, amount });
+    items.push({ description: head.filter(Boolean).join(" · "), qty: paxCount, rate: 0, amount: 0 });
+
+    for (let i = 0; i < paxCount; i += 1) {
+      const who = paxNames[i] ?? `Passenger ${i + 1}`;
+      items.push({ description: `   ${who}`, qty: 1, rate: fareParts[i], amount: fareParts[i] });
+
+      const addOns: [string, number][] = [
+        ["Service charge", scParts[i]],
+        ["Seat fee", seatParts[i]],
+        ["Meal fee", mealParts[i]],
+        ["Baggage / fast forward", bagParts[i]],
+      ];
+      for (const [label, amount] of addOns) {
+        if (!amount) continue;
+        const note = label === "Service charge" && feeNote ? ` — ${feeNote}` : "";
+        items.push({ description: `      ${label}${note}`, qty: 1, rate: amount, amount });
+      }
     }
 
     for (const c of readCharges(r.raw)) {
@@ -76,7 +104,6 @@ function buildItems(booking: Booking): InvoiceItemT[] {
       });
     }
   }
-
 
   // Manual adjustments only. Charge-derived ones (ref "charge:…") are written
   // out by the loop below, so counting them here would bill twice.
