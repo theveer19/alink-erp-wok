@@ -107,7 +107,7 @@ export function redactForRole<T extends Record<string, unknown>>(booking: T, rol
 export const RATE_BASES = [
   { value: "flat", label: "Flat" },
   { value: "per_pax", label: "Per Pax" },
-  { value: "per_night", label: "Per Night" },
+  { value: "per_night", label: "Per Room / Night" },
   { value: "per_pax_night", label: "Per Pax Ã— Night" },
 ] as const;
 
@@ -115,7 +115,7 @@ export function basisFactor(basis: string | undefined, numPax: number, nights: n
   const p = Math.trunc(numPax || 1);
   const n = Math.trunc(nights || 1);
   if (basis === "per_pax") return p;
-  if (basis === "per_night") return n;
+  if (basis === "per_night") return n * Math.max(Math.trunc(rooms || 1), 1);
   if (basis === "per_pax_night") return p * n;
   return 1;
 }

@@ -48,6 +48,7 @@ export default function BookingsClient({
   const [rows, setRows] = useState<Booking[]>(initial);
   const [q, setQ] = useState("");
   const [tab, setTab] = useState("all");
+  const [service, setService] = useState<"all" | "hotel" | "flight">("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [loading, setLoading] = useState(false);
@@ -90,9 +91,11 @@ export default function BookingsClient({
 
   const visible = useMemo(() => {
     const def = TABS.find((t) => t.key === tab);
-    if (!def?.statuses) return rows;
-    return rows.filter((b) => def.statuses!.includes(b.status));
-  }, [rows, tab]);
+    let list = def?.statuses ? rows.filter((b) => def.statuses!.includes(b.status)) : rows;
+    if (service === "hotel") list = list.filter((b) => (b.hotels?.length ?? 0) > 0);
+    if (service === "flight") list = list.filter((b) => (b.flights?.length ?? 0) > 0);
+    return list;
+  }, [rows, tab, service]);
 
   return (
     <div className="space-y-6">
@@ -142,6 +145,21 @@ export default function BookingsClient({
             className="pl-9"
           />
         </div>
+        <div className="flex items-center gap-1 rounded border border-slate-200 p-1">
+          {(["all", "hotel", "flight"] as const).map((v) => (
+            <button
+              key={v}
+              type="button"
+              onClick={() => setService(v)}
+              className={`rounded px-3 py-1.5 text-sm capitalize transition-colors ${
+                service === v ? "bg-slate-900 text-white" : "text-slate-600 hover:bg-slate-100"
+              }`}
+            >
+              {v === "all" ? "All services" : v}
+            </button>
+          ))}
+        </div>
+
         <div className="flex items-center gap-2">
           <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="w-40" />
           <span className="text-sm text-slate-400">→</span>

@@ -24,6 +24,13 @@ function buildItems(booking: Booking): InvoiceItemT[] {
   const rows = toServiceRows(booking);
   const items: InvoiceItemT[] = [];
 
+  // Same three fee fields, named for what the guest actually paid for.
+  const FEE_LABELS: Record<string, [string, string, string]> = {
+    flight: ["Seat fee", "Meal fee", "Baggage / fast forward"],
+    hotel: ["Extra bed", "Food bill (F&B)", "Early check-in / late check-out"],
+    other: ["Extra 1", "Extra 2", "Extra 3"],
+  };
+
   const paxNames: string[] = (booking.passengers ?? [])
     .map((p) => String((p as Record<string, unknown>).name ?? "").trim())
     .filter(Boolean);
@@ -57,6 +64,7 @@ function buildItems(booking: Booking): InvoiceItemT[] {
       head.push(r.detail);
       head.push(`Check-in ${r.date ?? "—"} ${inTime} → Check-out ${r.endDate ?? "—"} ${outTime}`);
       if (r.city) head.push(r.city);
+      if (r.raw.confirmation_number) head.push(`Conf. ${String(r.raw.confirmation_number)}`);
     } else if (r.kind === "flight") {
       head.push(r.address || r.detail);
       head.push(`${r.date ?? "—"}${r.time ? ` ${r.time}` : ""}`);
@@ -80,11 +88,12 @@ function buildItems(booking: Booking): InvoiceItemT[] {
       const who = paxNames[i] ?? `Passenger ${i + 1}`;
       items.push({ description: `   ${who}`, qty: 1, rate: fareParts[i], amount: fareParts[i] });
 
+      const [feeA, feeB, feeC] = FEE_LABELS[r.kind] ?? FEE_LABELS.other;
       const addOns: [string, number][] = [
         ["Service charge", scParts[i]],
-        ["Seat fee", seatParts[i]],
-        ["Meal fee", mealParts[i]],
-        ["Baggage / fast forward", bagParts[i]],
+        [feeA, seatParts[i]],
+        [feeB, mealParts[i]],
+        [feeC, bagParts[i]],
       ];
       for (const [label, amount] of addOns) {
         if (!amount) continue;
@@ -97,7 +106,9 @@ function buildItems(booking: Booking): InvoiceItemT[] {
       if (c.bearer !== "customer" || !c.amount) continue;
       const amount = round2(c.amount);
       items.push({
-        description: `   ${c.label}${c.remarks ? ` — ${c.remarks}` : ""}`,
+        description: `   ${c.label}${c.remarks ? ` — ${c.remarks}` : ""}${
+          c.receipt_name ? " (receipt attached)" : ""
+        }`,
         qty: 1,
         rate: amount,
         amount,

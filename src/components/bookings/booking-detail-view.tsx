@@ -25,6 +25,7 @@ import { InvoiceDialog } from "@/components/bookings/invoice-dialog";
 import { AllotDialog } from "@/components/bookings/allot-dialog";
 import { CloseServiceDialog } from "@/components/bookings/close-service-dialog";
 import { CloseBookingDialog } from "@/components/bookings/close-booking-dialog";
+import { CancelServiceDialog } from "@/components/bookings/cancel-service-dialog";
 
 interface Props {
   booking: Booking;
@@ -51,6 +52,7 @@ export function BookingDetailView({ booking, role, demoExpiresOn }: Props) {
   const [allotRow, setAllotRow] = useState<ServiceRow | null>(null);
   const [closeRow, setCloseRow] = useState<ServiceRow | null>(null);
   const [closeBookingOpen, setCloseBookingOpen] = useState(false);
+  const [cancelRow, setCancelRow] = useState<ServiceRow | null>(null);
 
   const rows = useMemo(() => toServiceRows(booking), [booking]);
   const pax = useMemo(() => numPaxOf(booking as never), [booking]);
@@ -304,10 +306,7 @@ export function BookingDetailView({ booking, role, demoExpiresOn }: Props) {
         danger: true,
         disabled: locked || cancelled,
         reason: cancelled ? "Already cancelled" : lockReason,
-        onSelect: () => {
-          if (confirm(`"${row.title}" — cancel this service?`))
-            run({ action: "cancel_service", rowId: row.rowId }, `x-${row.rowId}`);
-        },
+        onSelect: () => setCancelRow(row),
       },
     ];
   }
@@ -398,15 +397,15 @@ export function BookingDetailView({ booking, role, demoExpiresOn }: Props) {
           <table className="w-full min-w-[1200px] border-collapse text-[15px]">
             <thead>
               <tr className="border-b border-slate-200 text-left text-slate-700">
-                <th className="py-3 pl-3 pr-2 font-semibold">Date ▲</th>
+                <th className="py-3 pl-3 pr-2 font-semibold">Date / Stay ▲</th>
                 <th className="px-2 py-3 font-semibold">Customer</th>
                 <th className="px-2 py-3 font-semibold">Passenger</th>
                 <th className="px-2 py-3 font-semibold">Service</th>
                 <th className="px-2 py-3 font-semibold">Supplier</th>
-                <th className="px-2 py-3 font-semibold">Type</th>
-                <th className="px-2 py-3 font-semibold">Address / Sector</th>
+                <th className="px-2 py-3 font-semibold">Details</th>
+                <th className="px-2 py-3 font-semibold">Address / Route</th>
                 <th className="px-2 py-3 font-semibold">City</th>
-                <th className="px-2 py-3 font-semibold">Time</th>
+                <th className="px-2 py-3 font-semibold">Check-in / Dep.</th>
                 <th className="px-2 py-3 text-right font-semibold">Charges</th>
                 <th className="px-2 py-3 font-semibold">Status</th>
                 <th className="w-10 px-2 py-3" />
@@ -448,6 +447,11 @@ export function BookingDetailView({ booking, role, demoExpiresOn }: Props) {
                       <span className="inline-flex items-center gap-2">
                         <Phone className="h-4 w-4 text-emerald-600" />
                         {row.date ? `${row.date.slice(8, 10)}-${row.date.slice(5, 7)}` : "—"}
+                        {row.kind === "hotel" && row.endDate && row.endDate !== row.date && (
+                          <span className="text-slate-500">
+                            → {`${row.endDate.slice(8, 10)}-${row.endDate.slice(5, 7)}`}
+                          </span>
+                        )}
                       </span>
                     </td>
                     <td className="px-2 py-3">{row.customer || "Walk-in"}</td>
@@ -613,6 +617,18 @@ export function BookingDetailView({ booking, role, demoExpiresOn }: Props) {
           onClose={() => setAllotRow(null)}
           onDone={() => {
             setAllotRow(null);
+            router.refresh();
+          }}
+        />
+      )}
+
+      {cancelRow && (
+        <CancelServiceDialog
+          row={cancelRow}
+          bookingId={booking.id}
+          onClose={() => setCancelRow(null)}
+          onDone={() => {
+            setCancelRow(null);
             router.refresh();
           }}
         />

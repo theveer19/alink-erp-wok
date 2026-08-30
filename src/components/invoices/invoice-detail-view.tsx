@@ -22,8 +22,20 @@ interface PaymentRow {
 export function InvoiceDetailView({ invoice, role }: { invoice: Invoice; role: Role }) {
   const router = useRouter();
   const [payments, setPayments] = useState<PaymentRow[]>([]);
+  const [bills, setBills] = useState<{ id: string; name: string; url: string | null; category: string }[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const loadFiles = useCallback(async () => {
+    if (!invoice.booking_id) return;
+    try {
+      const res = await fetch(`/api/bookings/${invoice.booking_id}/files`);
+      const j = await res.json();
+      if (res.ok) setBills(j.files ?? []);
+    } catch {
+      /* attachments are optional */
+    }
+  }, [invoice.booking_id]);
 
   const load = useCallback(async () => {
     if (!invoice.booking_id) return;
@@ -38,7 +50,8 @@ export function InvoiceDetailView({ invoice, role }: { invoice: Invoice; role: R
 
   useEffect(() => {
     load();
-  }, [load]);
+    loadFiles();
+  }, [load, loadFiles]);
 
   async function cancelInvoice() {
     if (!invoice.booking_id) return;
@@ -271,6 +284,32 @@ export function InvoiceDetailView({ invoice, role }: { invoice: Invoice; role: R
           <footer className="mt-10 border-t border-slate-200 pt-3 text-center text-xs text-slate-400">
             This is a computer generated invoice.
           </footer>
+        </div>
+
+        {/* ---------- supporting bills (screen only) ---------- */}
+        <div className="no-print mt-6 rounded-lg border border-slate-200 p-4">
+          <h3 className="mb-3 text-sm font-semibold text-slate-700">Supporting bills & vouchers</h3>
+          {bills.length === 0 ? (
+            <p className="text-sm text-slate-500">Nothing attached to this booking.</p>
+          ) : (
+            <ul className="space-y-1">
+              {bills.map((f) => (
+                <li key={f.id} className="text-sm">
+                  {f.url ? (
+                    <a href={f.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                      {f.name}
+                    </a>
+                  ) : (
+                    <span className="text-slate-700">{f.name}</span>
+                  )}
+                  <span className="ml-2 text-xs text-slate-400">{f.category}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+          <p className="mt-2 text-xs text-slate-500">
+            Open a file and print it alongside the invoice when the customer asks for proof.
+          </p>
         </div>
 
         {/* ---------- payments (screen only) ---------- */}

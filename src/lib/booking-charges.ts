@@ -1,9 +1,9 @@
-// Extra charges — the "duty charges" concept, adapted for hotel/flight travel.
-// Charges live in the service's `charges[]`. To keep the numbers correct we
-// derive the following on every save:
-//   bearer "supplier" -> service.other_charges  (counts towards total_supplier_cost)
-//   bearer "customer" -> booking.adjustments[]  (counts towards total_sales)
-// computeFinancials / recomputeService are left untouched.
+// Extra charges — IndeCab ke "duty charges" wala concept, travel ke hisaab se.
+// Charge service ke andar `charges[]` me rehta hai. Numbers galat na ho isliye
+// hum har save par derive karte hain:
+//   bearer "supplier" -> service.other_charges  (total_supplier_cost me jaata hai)
+//   bearer "customer" -> booking.adjustments[]  (total_sales me jaata hai)
+// computeFinancials / recomputeService ko chhua nahi gaya.
 
 export interface Charge {
   id: string;
@@ -11,9 +11,12 @@ export interface Charge {
   amount: number;
   bearer: "customer" | "supplier";
   remarks?: string;
+  /** Receipt attached to this line — file id and name from the files API. */
+  receipt_id?: string;
+  receipt_name?: string;
 }
 
-/** Everyday charges for this business — used as dropdown suggestions. */
+/** Client ke roz ke charges — dropdown me suggestion ke liye. */
 export const CHARGE_PRESETS = [
   "Extra bed",
   "Early check-in",
@@ -53,6 +56,8 @@ export function readCharges(svc: Record<string, unknown> | null | undefined): Ch
         amount: num(o.amount),
         bearer: o.bearer === "supplier" ? "supplier" : "customer",
         remarks: o.remarks ? String(o.remarks) : undefined,
+        receipt_id: o.receipt_id ? String(o.receipt_id) : undefined,
+        receipt_name: o.receipt_name ? String(o.receipt_name) : undefined,
       } as Charge;
     })
     .filter((c) => c.label);
@@ -62,7 +67,7 @@ export function sumCharges(charges: Charge[], bearer: Charge["bearer"]): number 
   return round2(charges.filter((c) => c.bearer === bearer).reduce((a, c) => a + num(c.amount), 0));
 }
 
-/** Only customer-borne charges are billed to the customer. */
+/** Sirf customer-bearing charges hi customer ko bill hote hain. */
 export function customerChargeTotal(charges: Charge[]): number {
   return sumCharges(charges, "customer");
 }
@@ -79,8 +84,8 @@ const SERVICE_KEYS = ["hotels", "flights", "others"] as const;
 const KIND_OF: Record<string, string> = { hotels: "hotel", flights: "flight", others: "other" };
 
 /**
- * Rebuilds adjustments from the customer-borne charges on every service.
- * Manually added adjustments (those without a `ref`) are left untouched.
+ * Saari services ke customer-charges se adjustments dobara banata hai.
+ * Manually add kiye gaye adjustments (jinme `ref` nahi hai) waise hi rehte hain.
  */
 export function rebuildAdjustments(booking: BookingLike): Record<string, unknown>[] {
   const manual = (booking.adjustments ?? []).filter(
@@ -106,7 +111,7 @@ export function rebuildAdjustments(booking: BookingLike): Record<string, unknown
   return [...manual, ...derived];
 }
 
-/** Folds supplier-borne charges into the service's other_charges. */
+/** Supplier-bearing charges ko service ke other_charges me daal deta hai. */
 export function applySupplierCharges(svc: Svc): Svc {
   const charges = readCharges(svc);
   const supplierExtra = sumCharges(charges, "supplier");

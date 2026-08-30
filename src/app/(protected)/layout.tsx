@@ -20,6 +20,7 @@ const NAV: NavItem[] = [
   { href: "/payments", label: "Payments" },
   { href: "/upcoming", label: "Upcoming" },
   { href: "/reports", label: "Reports" },
+  { href: "/ledger", label: "Ledger" },
   { href: "/users", label: "Users", adminOnly: true },
   { href: "/settings", label: "Settings" },
 ];

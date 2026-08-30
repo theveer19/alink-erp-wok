@@ -21,6 +21,7 @@ export function SettingsView({
   const [companyName, setCompanyName] = useState(tenant?.name ?? "");
   const [myName, setMyName] = useState(me.name);
   const [saving, setSaving] = useState(false);
+  const [recomputing, setRecomputing] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -44,6 +45,27 @@ export function SettingsView({
       setError(e instanceof Error ? e.message : "Save fail");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function recomputeAll() {
+    if (!confirm("Recalculate stored amounts on every booking? Safe to run any time.")) return;
+    setRecomputing(true);
+    setError(null);
+    setMsg(null);
+    try {
+      const res = await fetch("/api/admin/recompute", { method: "POST" });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j.error ?? "Recalculation failed");
+      setMsg(
+        `Recalculated ${j.updated} of ${j.total} bookings` +
+          (j.failures?.length ? ` · ${j.failures.length} failed` : ""),
+      );
+      router.refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Recalculation failed");
+    } finally {
+      setRecomputing(false);
     }
   }
 
@@ -140,9 +162,30 @@ export function SettingsView({
         </p>
       </section>
 
+      {isAdmin && (
+        <section className="mb-5 rounded-lg border border-slate-200 p-4">
+          <h2 className="mb-2 text-sm font-semibold text-slate-700">Maintenance</h2>
+          <p className="mb-3 text-sm text-slate-500">
+            Service amounts are stored when a booking is saved. After a pricing change, run this once so older
+            bookings pick up the new calculation.
+          </p>
+          <button
+            type="button"
+            disabled={recomputing}
+            onClick={recomputeAll}
+            className="rounded border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+          >
+            {recomputing ? "Recalculating…" : "Recalculate all bookings"}
+          </button>
+        </section>
+      )}
+
       <section className="rounded-lg border border-slate-200 p-4">
         <h2 className="mb-3 text-sm font-semibold text-slate-700">Masters</h2>
         <div className="flex flex-wrap gap-2">
+          <Link href="/ledger" className="rounded border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
+            Customer ledger
+          </Link>
           <Link href="/customers" className="rounded border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
             Customers ({counts.customers})
           </Link>

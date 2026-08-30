@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Plus, Trash2, Upload, X } from "lucide-react";
 import { RATE_BASES, recomputeService } from "@/lib/bookings";
 import { newChargeId, readCharges, sumCharges, type Charge } from "@/lib/booking-charges";
@@ -18,25 +18,52 @@ interface Supplier {
   default_service_charge?: number | null;
 }
 
-/** Items a hotel or flight service usually gets billed for at closing time. */
-const ITEMS = [
-  "Extra bed",
-  "Extra meal",
-  "Meal upgrade",
-  "Seat selection",
-  "Excess baggage",
-  "Early check-in",
-  "Late check-out",
-  "Airport transfer",
-  "Toll & parking",
-  "Sightseeing / entry ticket",
-  "Room upgrade",
-  "Date change fee",
-  "Cancellation charge",
-  "Other",
-];
+/** What each kind of service usually gets billed for at closing time. */
+const ITEMS_BY_KIND: Record<string, string[]> = {
+  hotel: [
+    "Breakfast",
+    "Lunch",
+    "Dinner",
+    "Food & beverage",
+    "Extra bed",
+    "Extra person charge",
+    "Room upgrade",
+    "Early check-in",
+    "Late check-out",
+    "Laundry",
+    "Mini bar",
+    "Airport transfer",
+    "Sightseeing / entry ticket",
+    "Parking",
+    "Damage / incidental",
+    "Cancellation charge",
+    "Other",
+  ],
+  flight: [
+    "Seat selection",
+    "Extra meal",
+    "Meal upgrade",
+    "Excess baggage",
+    "Priority check-in",
+    "Lounge access",
+    "Date change fee",
+    "Cancellation charge",
+    "Other",
+  ],
+  other: ["Extra charge", "Cancellation charge", "Other"],
+};
 
 const inr = (n: unknown) => `₹${Number(n ?? 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
+
+/**
+ * Hotels and flights bill different add-ons but store them in the same three
+ * fields, so the maths and the invoice keep working for both.
+ */
+const FEE_LABELS: Record<string, [string, string, string]> = {
+  flight: ["Seat fee", "Meal fee", "Baggage / fast forward"],
+  hotel: ["Extra bed", "Food bill (F&B)", "Early check-in / late check-out"],
+  other: ["Extra 1", "Extra 2", "Extra 3"],
+};
 
 export function CloseServiceDialog({
   row,
@@ -54,6 +81,7 @@ export function CloseServiceDialog({
   onDone: () => void;
 }) {
   const canSupplier = can(role, ["operations", "accounts"]);
+  const [feeA, feeB, feeC] = FEE_LABELS[row.kind] ?? FEE_LABELS.other;
 
   // ---- customer side ----
   const [basis, setBasis] = useState(String(row.raw.rate_basis ?? "flat"));
@@ -63,7 +91,14 @@ export function CloseServiceDialog({
   const [mealFee, setMealFee] = useState(String(row.raw.meal_fee ?? ""));
   const [baggageFee, setBaggageFee] = useState(String(row.raw.fast_forward_fee ?? ""));
   const [feeNote, setFeeNote] = useState(String(row.raw.fee_note ?? ""));
-  const [pnr, setPnr] = useState(String(row.raw.pnr ?? ""));
+  const [feeReceipts, setFeeReceipts] = useState<Record<string, string>>({
+    seat_fee: String(row.raw.seat_fee_receipt ?? ""),
+    meal_fee: String(row.raw.meal_fee_receipt ?? ""),
+    fast_forward_fee: String(row.raw.fast_forward_fee_receipt ?? ""),
+  });
+  const [pnr, setPnr] = useState(
+    String((row.kind === "hotel" ? row.raw.confirmation_number : row.raw.pnr) ?? ""),
+  );
 
   // ---- supplier side ----
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -80,11 +115,42 @@ export function CloseServiceDialog({
 
   const [charges, setCharges] = useState<Charge[]>(readCharges(row.raw));
   const [remarks, setRemarks] = useState(String(row.raw.remarks ?? ""));
-  const [files, setFiles] = useState<string[]>([]);
+  const [files, setFiles] = useState<{ id: string; name: string; url: string | null }[]>([]);
+  const [loadingFiles, setLoadingFiles] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const rowFileRef = useRef<HTMLInputElement>(null);
+  const [uploadingFor, setUploadingFor] = useState<string | null>(null);
+  const [uploadingFee, setUploadingFee] = useState<string | null>(null);
+  const feeFileRef = useRef<HTMLInputElement>(null);
+
+  // Existing bills for this service — hotels live and die by these.
+  const loadFiles = useCallback(async () => {
+    setLoadingFiles(true);
+    try {
+      const res = await fetch(`/api/bookings/${bookingId}/files`);
+      const j = await res.json();
+      if (res.ok) {
+        setFiles(
+          (j.files ?? [])
+            .filter((f: { ref?: string | null }) => f.ref === row.rowId)
+            .map((f: { id: string; name: string; url: string | null }) => ({
+              id: f.id,
+              name: f.name,
+              url: f.url,
+            })),
+        );
+      }
+    } finally {
+      setLoadingFiles(false);
+    }
+  }, [bookingId, row.rowId]);
+
+  useEffect(() => {
+    loadFiles();
+  }, [loadFiles]);
 
   useEffect(() => {
     if (!canSupplier) return;
@@ -183,23 +249,33 @@ export function CloseServiceDialog({
 
   const preview = useMemo(() => recomputeService(draft, numPax), [draft, numPax]);
 
-  async function upload(file: File) {
+  async function upload(file: File, chargeId?: string, feeKey?: string) {
     setUploading(true);
     setError(null);
     try {
       const fd = new FormData();
       fd.append("file", file);
-      fd.append("category", row.kind === "flight" ? "ticket" : "voucher");
+      fd.append("category", chargeId ? "other" : row.kind === "flight" ? "ticket" : "voucher");
       fd.append("ref", row.rowId);
       const res = await fetch(`/api/bookings/${bookingId}/files`, { method: "POST", body: fd });
       const j = await res.json();
       if (!res.ok) throw new Error(j.error ?? "Upload failed");
-      setFiles((f) => [...f, j.file?.name ?? file.name]);
+      // A receipt uploaded from a billing row stays linked to that row.
+      if (chargeId && j.file) {
+        patchCharge(chargeId, { receipt_id: j.file.id, receipt_name: j.file.name });
+      }
+      if (feeKey && j.file) {
+        setFeeReceipts((r) => ({ ...r, [feeKey]: j.file.name }));
+      }
+      await loadFiles();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Upload failed");
     } finally {
       setUploading(false);
+      setUploadingFor(null);
+      setUploadingFee(null);
       if (fileRef.current) fileRef.current.value = "";
+      if (rowFileRef.current) rowFileRef.current.value = "";
     }
   }
 
@@ -215,6 +291,10 @@ export function CloseServiceDialog({
     });
 
   async function submit(alsoConfirm: boolean) {
+    if (alsoConfirm && row.kind === "hotel" && files.length === 0) {
+      const go = confirm("No hotel bill is attached. Close this service anyway?");
+      if (!go) return;
+    }
     setSaving(true);
     setError(null);
     try {
@@ -228,7 +308,12 @@ export function CloseServiceDialog({
         meal_fee: Number(mealFee || 0),
         fast_forward_fee: Number(baggageFee || 0),
         fee_note: feeNote,
-        pnr: pnr.trim().toUpperCase() || null,
+        seat_fee_receipt: feeReceipts.seat_fee || null,
+        meal_fee_receipt: feeReceipts.meal_fee || null,
+        fast_forward_fee_receipt: feeReceipts.fast_forward_fee || null,
+        ...(row.kind === "hotel"
+          ? { confirmation_number: pnr.trim().toUpperCase() || null }
+          : { pnr: pnr.trim().toUpperCase() || null }),
         remarks,
       };
       if (canSupplier) {
@@ -255,6 +340,39 @@ export function CloseServiceDialog({
     }
   }
 
+
+  /** Attach link that sits under a fee field, so the bill lands next to the amount. */
+  const feeAttach = (key: string) => (
+    <div className="mt-1">
+      {feeReceipts[key] ? (
+        <span className="flex items-center gap-2 text-xs text-emerald-700">
+          <span className="truncate" title={feeReceipts[key]}>
+            📎 {feeReceipts[key]}
+          </span>
+          <button
+            type="button"
+            onClick={() => setFeeReceipts((r) => ({ ...r, [key]: "" }))}
+            className="shrink-0 text-slate-400 hover:text-red-600"
+            aria-label="Remove receipt"
+          >
+            ✕
+          </button>
+        </span>
+      ) : (
+        <button
+          type="button"
+          disabled={uploading}
+          onClick={() => {
+            setUploadingFee(key);
+            feeFileRef.current?.click();
+          }}
+          className="text-xs text-blue-600 hover:underline disabled:opacity-50"
+        >
+          {uploading && uploadingFee === key ? "Uploading…" : "Attach bill"}
+        </button>
+      )}
+    </div>
+  );
   return (
     <div className="fixed inset-0 z-[900] flex items-start justify-center overflow-y-auto bg-slate-900/40 p-4">
       <div className="my-6 w-full max-w-3xl rounded-lg bg-white shadow-xl">
@@ -314,10 +432,10 @@ export function CloseServiceDialog({
               </label>
             </div>
 
-            {row.kind === "flight" && (
+            {row.kind !== "other" && (
               <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
                 <label>
-                  <span className="mb-1 block text-xs font-medium text-slate-500">Seat fee</span>
+                  <span className="mb-1 block text-xs font-medium text-slate-500">{feeA}</span>
                   <input
                     type="number"
                     step="0.01"
@@ -325,9 +443,10 @@ export function CloseServiceDialog({
                     onChange={(e) => setSeat(e.target.value)}
                     className="w-full rounded border border-slate-300 px-3 py-2 text-right text-sm focus:border-blue-500 focus:outline-none"
                   />
+                {feeAttach("seat_fee")}
                 </label>
                 <label>
-                  <span className="mb-1 block text-xs font-medium text-slate-500">Meal fee</span>
+                  <span className="mb-1 block text-xs font-medium text-slate-500">{feeB}</span>
                   <input
                     type="number"
                     step="0.01"
@@ -335,9 +454,10 @@ export function CloseServiceDialog({
                     onChange={(e) => setMeal(e.target.value)}
                     className="w-full rounded border border-slate-300 px-3 py-2 text-right text-sm focus:border-blue-500 focus:outline-none"
                   />
+                {feeAttach("meal_fee")}
                 </label>
                 <label>
-                  <span className="mb-1 block text-xs font-medium text-slate-500">Baggage / fast forward</span>
+                  <span className="mb-1 block text-xs font-medium text-slate-500">{feeC}</span>
                   <input
                     type="number"
                     step="0.01"
@@ -345,6 +465,7 @@ export function CloseServiceDialog({
                     onChange={(e) => setBaggage(e.target.value)}
                     className="w-full rounded border border-slate-300 px-3 py-2 text-right text-sm focus:border-blue-500 focus:outline-none"
                   />
+                {feeAttach("fast_forward_fee")}
                 </label>
               </div>
             )}
@@ -361,9 +482,11 @@ export function CloseServiceDialog({
               />
             </label>
 
-            {row.kind === "flight" && (
+            {row.kind !== "other" && (
               <label className="mt-3 block sm:w-1/3">
-                <span className="mb-1 block text-xs font-medium text-slate-500">PNR</span>
+                <span className="mb-1 block text-xs font-medium text-slate-500">
+                  {row.kind === "hotel" ? "Hotel confirmation number" : "PNR"}
+                </span>
                 <input
                   value={pnr}
                   onChange={(e) => setPnr(e.target.value)}
@@ -435,10 +558,10 @@ export function CloseServiceDialog({
                 </label>
               </div>
 
-              {row.kind === "flight" && (
+              {row.kind !== "other" && (
                 <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
                   <label>
-                    <span className="mb-1 block text-xs font-medium text-slate-500">Seat fee</span>
+                    <span className="mb-1 block text-xs font-medium text-slate-500">{feeA}</span>
                     <input
                       type="number"
                       step="0.01"
@@ -451,7 +574,7 @@ export function CloseServiceDialog({
                     />
                   </label>
                   <label>
-                    <span className="mb-1 block text-xs font-medium text-slate-500">Meal fee</span>
+                    <span className="mb-1 block text-xs font-medium text-slate-500">{feeB}</span>
                     <input
                       type="number"
                       step="0.01"
@@ -464,7 +587,7 @@ export function CloseServiceDialog({
                     />
                   </label>
                   <label>
-                    <span className="mb-1 block text-xs font-medium text-slate-500">Baggage / fast forward</span>
+                    <span className="mb-1 block text-xs font-medium text-slate-500">{feeC}</span>
                     <input
                       type="number"
                       step="0.01"
@@ -497,13 +620,14 @@ export function CloseServiceDialog({
                     <th className="w-48 px-3 py-2 font-semibold">Item</th>
                     <th className="px-3 py-2 font-semibold">Description</th>
                     <th className="w-28 px-3 py-2 text-right font-semibold">Amount</th>
+                    <th className="w-40 px-3 py-2 font-semibold">Receipt</th>
                     <th className="w-10 px-2 py-2" />
                   </tr>
                 </thead>
                 <tbody>
                   {charges.length === 0 && (
                     <tr>
-                      <td colSpan={4} className="px-3 py-5 text-center text-sm text-slate-500">
+                      <td colSpan={5} className="px-3 py-5 text-center text-sm text-slate-500">
                         No billing items. Add extra bed, meal, seat, baggage, toll and anything else chargeable.
                       </td>
                     </tr>
@@ -536,6 +660,37 @@ export function CloseServiceDialog({
                           className="w-full rounded border border-slate-300 px-2 py-1.5 text-right text-sm focus:border-blue-500 focus:outline-none"
                         />
                       </td>
+                      <td className="px-3 py-2">
+                        {c.receipt_name ? (
+                          <span className="flex items-center gap-2 text-xs text-emerald-700">
+                            <span className="truncate" title={c.receipt_name}>
+                              {c.receipt_name}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                patchCharge(c.id, { receipt_id: undefined, receipt_name: undefined })
+                              }
+                              className="shrink-0 text-slate-400 hover:text-red-600"
+                              aria-label="Remove receipt"
+                            >
+                              ✕
+                            </button>
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            disabled={uploading}
+                            onClick={() => {
+                              setUploadingFor(c.id);
+                              rowFileRef.current?.click();
+                            }}
+                            className="text-xs text-blue-600 hover:underline disabled:opacity-50"
+                          >
+                            {uploading && uploadingFor === c.id ? "Uploading…" : "Attach receipt"}
+                          </button>
+                        )}
+                      </td>
                       <td className="px-2 py-2 text-right">
                         <button
                           type="button"
@@ -552,8 +707,30 @@ export function CloseServiceDialog({
               </table>
             </div>
 
+            <input
+              ref={feeFileRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/heic,application/pdf"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f && uploadingFee) upload(f, undefined, uploadingFee);
+              }}
+            />
+
+            <input
+              ref={rowFileRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/heic,application/pdf"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f && uploadingFor) upload(f, uploadingFor);
+              }}
+            />
+
             <datalist id="close-service-items">
-              {ITEMS.map((i) => (
+              {(ITEMS_BY_KIND[row.kind] ?? ITEMS_BY_KIND.other).map((i) => (
                 <option key={i} value={i} />
               ))}
             </datalist>
@@ -587,7 +764,38 @@ export function CloseServiceDialog({
               />
             </div>
 
-            {files.length > 0 && <p className="mt-2 text-xs text-emerald-700">Attached: {files.join(", ")}</p>}
+            <div className="mt-3 rounded border border-slate-200 p-3">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Attached bills & documents
+              </p>
+              {loadingFiles && <p className="text-sm text-slate-500">Loading…</p>}
+              {!loadingFiles && files.length === 0 && (
+                <p className="text-sm text-slate-500">
+                  Nothing attached yet.
+                  {row.kind === "hotel"
+                    ? " Attach the hotel bill before closing — accounts needs it to verify the cost."
+                    : ""}
+                </p>
+              )}
+              <ul className="space-y-1">
+                {files.map((f) => (
+                  <li key={f.id} className="text-sm">
+                    {f.url ? (
+                      <a
+                        href={f.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 hover:underline"
+                      >
+                        {f.name}
+                      </a>
+                    ) : (
+                      <span className="text-slate-700">{f.name}</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
           </div>
 
           {/* ---------- remarks ---------- */}

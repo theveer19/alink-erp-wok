@@ -70,7 +70,7 @@ export function ServiceFeedTable({
         <table className="w-full min-w-[1000px] border-collapse text-sm">
           <thead className="bg-slate-50">
             <tr className="text-left text-slate-600">
-              <th className="px-3 py-2.5 font-semibold">Date</th>
+              <th className="px-3 py-2.5 font-semibold">Date / Stay</th>
               {showKind && <th className="px-3 py-2.5 font-semibold">Type</th>}
               <th className="px-3 py-2.5 font-semibold">Booking</th>
               <th className="px-3 py-2.5 font-semibold">Customer</th>
@@ -105,6 +105,9 @@ export function ServiceFeedTable({
                 >
                   <td className="whitespace-nowrap px-3 py-2.5">
                     {r.date ?? "—"}
+                    {r.kind === "hotel" && r.endDate && r.endDate !== r.date ? (
+                      <span className="text-slate-500"> → {r.endDate}</span>
+                    ) : null}
                     {r.time ? <span className="ml-1 text-xs text-slate-400">{r.time}</span> : null}
                   </td>
                   {showKind && (

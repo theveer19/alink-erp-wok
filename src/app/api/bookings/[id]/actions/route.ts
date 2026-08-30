@@ -19,6 +19,8 @@ const ChargeSchema = z.object({
   amount: z.coerce.number().finite(),
   bearer: z.enum(["customer", "supplier"]),
   remarks: z.string().max(200).optional(),
+  receipt_id: z.string().max(60).optional(),
+  receipt_name: z.string().max(120).optional(),
 });
 
 const Body = z.object({

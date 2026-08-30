@@ -66,6 +66,7 @@ export default function NewBookingClient({
     checkout_time: "11:00",
     rate: "",
     service_charge: "",
+    rooms: "1",
   });
   const [flight, setFlight] = useState({
     origin: "",
@@ -95,10 +96,18 @@ export default function NewBookingClient({
   }, [hotel.checkin, hotel.checkout]);
   const days = nights ? String(Number(nights) + 1) : "";
 
-  // The rate entered is PER PASSENGER — the booking total multiplies it by pax.
-  const perPaxRate = Number((svcType === "hotel" ? hotel.rate : flight.rate) || 0);
-  const rateTotal = perPaxRate * paxCount;
+  // Flights are sold per passenger; hotels per room per night. Same field,
+  // different multiplier — that is how the trade quotes them.
+  const unitRate = Number((svcType === "hotel" ? hotel.rate : flight.rate) || 0);
+  const roomCount = Math.max(Number(hotel.rooms) || 1, 1);
+  const nightCount = Math.max(Number(nights) || 1, 1);
+  const multiplier = svcType === "hotel" ? roomCount * nightCount : paxCount;
+  const rateTotal = unitRate * multiplier;
   const grandTotal = rateTotal + Number(scValue || 0);
+  const unitLabel =
+    svcType === "hotel"
+      ? `${roomCount} room${roomCount === 1 ? "" : "s"} × ${nightCount} night${nightCount === 1 ? "" : "s"}`
+      : `${paxCount} pax`;
 
   // Pull the existing booking into the form when editing.
   useEffect(() => {
@@ -143,6 +152,7 @@ export default function NewBookingClient({
             checkout_time: String(h.check_out_time ?? "11:00"),
             rate: String(h.sales_rate ?? h.customer_rate ?? ""),
             service_charge: String(h.customer_service_charge ?? ""),
+            rooms: String(h.rooms ?? "1"),
           });
           setScTouched(true);
         } else if (f) {
@@ -219,8 +229,9 @@ export default function NewBookingClient({
               check_out: hotel.checkout,
               check_out_time: hotel.checkout_time,
               nights: nights || "1",
-              rate_basis: "per_pax",
-              sales_rate: perPaxRate,
+              rooms: roomCount,
+              rate_basis: "per_night",
+              sales_rate: unitRate,
               customer_rate: rateTotal,
               customer_service_charge: scValue,
             }
@@ -230,7 +241,7 @@ export default function NewBookingClient({
               to: flight.destination,
               departure_date: flight.date,
               rate_basis: "per_pax",
-              sales_rate: perPaxRate,
+              sales_rate: unitRate,
               customer_rate: rateTotal,
               customer_service_charge: scValue,
             };
@@ -289,9 +300,9 @@ export default function NewBookingClient({
               check_in_time: hotel.checkin_time,
               check_out_time: hotel.checkout_time,
               nights: nights || "1",
-              rooms: 1,
-              rate_basis: "per_pax",
-              sales_rate: perPaxRate,
+              rooms: roomCount,
+              rate_basis: "per_night",
+              sales_rate: unitRate,
               customer_rate: rateTotal,
               customer_service_charge: scValue,
             }
@@ -303,7 +314,7 @@ export default function NewBookingClient({
               to: flight.destination,
               departure_date: flight.date,
               rate_basis: "per_pax",
-              sales_rate: perPaxRate,
+              sales_rate: unitRate,
               customer_rate: rateTotal,
               customer_service_charge: scValue,
             };
@@ -506,14 +517,22 @@ export default function NewBookingClient({
                     onChange={(e) => setHotel({ ...hotel, checkout_time: e.target.value })}
                   />
                 </Field>
-                <Field label="Rate (₹) — per pax">
+                <Field label="Rooms">
+                  <Input
+                    type="number"
+                    min="1"
+                    value={hotel.rooms}
+                    onChange={(e) => setHotel({ ...hotel, rooms: e.target.value })}
+                  />
+                </Field>
+                <Field label="Rate (₹) — per room / night">
                   <Input type="number" value={hotel.rate} onChange={(e) => setHotel({ ...hotel, rate: e.target.value })} />
                 </Field>
                 <Field label={`Service Charge (₹) — ${paxCount} pax auto`}>
                   <Input type="number" value={scValue} onChange={(e) => setSc(e.target.value)} />
                 </Field>
               </div>
-              <TotalStrip perPaxRate={perPaxRate} paxCount={paxCount} rateTotal={rateTotal} sc={Number(scValue || 0)} grandTotal={grandTotal} />
+              <TotalStrip unitRate={unitRate} unitLabel={unitLabel} rateTotal={rateTotal} sc={Number(scValue || 0)} grandTotal={grandTotal} />
             </Section>
           )}
 
@@ -539,7 +558,7 @@ export default function NewBookingClient({
                   <Input type="number" value={scValue} onChange={(e) => setSc(e.target.value)} />
                 </Field>
               </div>
-              <TotalStrip perPaxRate={perPaxRate} paxCount={paxCount} rateTotal={rateTotal} sc={Number(scValue || 0)} grandTotal={grandTotal} />
+              <TotalStrip unitRate={unitRate} unitLabel={unitLabel} rateTotal={rateTotal} sc={Number(scValue || 0)} grandTotal={grandTotal} />
             </Section>
           )}
 
@@ -563,23 +582,23 @@ export default function NewBookingClient({
 }
 
 function TotalStrip({
-  perPaxRate,
-  paxCount,
+  unitRate,
+  unitLabel,
   rateTotal,
   sc,
   grandTotal,
 }: {
-  perPaxRate: number;
-  paxCount: number;
+  unitRate: number;
+  unitLabel: string;
   rateTotal: number;
   sc: number;
   grandTotal: number;
 }) {
-  if (!perPaxRate && !sc) return null;
+  if (!unitRate && !sc) return null;
   return (
     <div className="flex flex-wrap items-center gap-x-6 gap-y-1 border-t border-slate-200 bg-slate-50 px-5 py-3 text-sm">
       <span className="text-slate-500">
-        {money(perPaxRate)} × {paxCount} pax ={" "}
+        {money(unitRate)} × {unitLabel} ={" "}
         <span className="font-medium text-slate-800">{money(rateTotal)}</span>
       </span>
       <span className="text-slate-500">

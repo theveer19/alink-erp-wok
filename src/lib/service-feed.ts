@@ -1,4 +1,4 @@
-﻿import type { SupabaseClient } from "@supabase/supabase-js";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { toServiceRows, type ServiceKind } from "@/lib/booking-actions";
 import { customerChargeTotal, readCharges } from "@/lib/booking-charges";
 import type { Booking } from "@/lib/types";
@@ -11,6 +11,7 @@ export interface FeedRow {
   rowId: string;
   kind: ServiceKind;
   date: string | null;
+  endDate: string | null;
   time: string | null;
   customer: string;
   passenger: string;
@@ -62,6 +63,7 @@ export async function getServiceFeed(
         rowId: r.rowId,
         kind: r.kind,
         date: r.date,
+        endDate: r.endDate,
         time: r.time,
         customer: r.customer,
         passenger: r.passenger,
@@ -83,7 +85,7 @@ export async function getServiceFeed(
   return filter.limit ? out.slice(0, filter.limit) : out;
 }
 
-/** yyyy-mm-dd, n days from today. */
+/** yyyy-mm-dd, aaj se n din aage/peeche. */
 export function dayOffset(n: number): string {
   const d = new Date();
   d.setDate(d.getDate() + n);
