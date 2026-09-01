@@ -31,6 +31,8 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
 
 function ServiceBlock({ row, showCost }: { row: ServiceRow; showCost: boolean }) {
   const charges = readCharges(row.raw);
+  const isHotel = row.kind === "hotel";
+
   return (
     <div className="mb-4 break-inside-avoid rounded border border-slate-200 p-4">
       <div className="mb-2 flex items-start justify-between gap-3">
@@ -41,13 +43,31 @@ function ServiceBlock({ row, showCost }: { row: ServiceRow; showCost: boolean })
         <span className="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-600">{row.status}</span>
       </div>
 
-      <Row label="Date" value={`${row.date ?? "—"}${row.endDate && row.endDate !== row.date ? ` → ${row.endDate}` : ""}`} />
-      <Row label={row.kind === "flight" ? "Sector" : "Address"} value={row.address || "—"} />
-      <Row label="City" value={row.city || "—"} />
-      <Row label="Details" value={row.detail} />
-      <Row label="Passenger" value={row.passenger || "—"} />
-      {row.kind === "hotel" && <Row label="Confirmation no." value={String(row.raw.confirmation_number ?? "—")} />}
-      {row.kind === "flight" && <Row label="PNR" value={String(row.raw.pnr ?? "—")} />}
+      {isHotel ? (
+        <>
+          <Row
+            label="Check-in"
+            value={`${row.date ?? "—"} ${String(row.raw.check_in_time ?? "14:00")}`}
+          />
+          <Row
+            label="Check-out"
+            value={`${row.endDate ?? "—"} ${String(row.raw.check_out_time ?? "11:00")}`}
+          />
+          <Row label="Stay" value={row.detail} />
+          <Row label="Hotel address" value={row.address || row.city || "—"} />
+          <Row label="Guest" value={row.passenger || "—"} />
+          <Row label="Confirmation no." value={String(row.raw.confirmation_number ?? "—")} />
+        </>
+      ) : (
+        <>
+          <Row label="Date" value={`${row.date ?? "—"}${row.time ? ` ${row.time}` : ""}`} />
+          <Row label="Sector" value={row.address || "—"} />
+          <Row label="Class" value={row.detail} />
+          <Row label="Passenger" value={row.passenger || "—"} />
+          <Row label="PNR" value={String(row.raw.pnr ?? "—")} />
+        </>
+      )}
+
       {showCost && <Row label="Supplier" value={row.supplierName ?? "—"} />}
       {showCost && <Row label="Supplier cost" value={inr(row.raw.total_supplier_cost)} />}
       <Row label="Amount" value={inr(row.raw.customer_selling_amount)} />
@@ -59,7 +79,10 @@ function ServiceBlock({ row, showCost }: { row: ServiceRow; showCost: boolean })
             .filter((c) => c.bearer === "customer")
             .map((c) => (
               <div key={c.id} className="flex justify-between py-0.5 text-slate-600">
-                <span>{c.label}</span>
+                <span>
+                  {c.label}
+                  {c.remarks ? ` — ${c.remarks}` : ""}
+                </span>
                 <span>{inr(c.amount)}</span>
               </div>
             ))}
@@ -101,6 +124,28 @@ export default async function PrintDocPage({
   const fin = booking.financials;
   const cust = booking.customer_snapshot;
 
+  // These columns are often blank on older bookings, so work them out from the services.
+  const hotelRows = allRows.filter((r) => r.kind === "hotel" && r.status !== "Cancelled");
+  const nights =
+    Number(booking.num_nights) ||
+    hotelRows.reduce((a, r) => a + (Number(r.raw.nights) || 0), 0);
+  const roomCount =
+    Number(booking.num_rooms) || hotelRows.reduce((a, r) => a + (Number(r.raw.rooms) || 0), 0);
+  const paxCount =
+    (booking.passengers?.length ?? 0) || Number(booking.num_travellers) || 1;
+  const travelFrom =
+    booking.travel_start_date ?? allRows.map((r) => r.date).filter(Boolean).sort()[0] ?? null;
+  const travelTo =
+    booking.travel_end_date ??
+    allRows
+      .map((r) => r.endDate ?? r.date)
+      .filter(Boolean)
+      .sort()
+      .slice(-1)[0] ??
+    null;
+  const destination =
+    booking.destination || hotelRows[0]?.city || allRows[0]?.city || allRows[0]?.address || "—";
+
   return (
     <PrintShell title={DOCS[doc]}>
       <header className="mb-5 flex items-start justify-between border-b-2 border-slate-800 pb-3">
@@ -125,10 +170,12 @@ export default async function PrintDocPage({
         </div>
         <div>
           <h2 className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-400">Trip</h2>
-          <Row label="Destination" value={booking.destination ?? "—"} />
-          <Row label="Travel" value={`${dt(booking.travel_start_date)} → ${dt(booking.travel_end_date)}`} />
-          <Row label="Pax" value={`${booking.num_adults} adult, ${booking.num_children} child`} />
-          <Row label="Nights / Rooms" value={`${booking.num_nights} / ${booking.num_rooms}`} />
+          <Row label="Destination" value={destination} />
+          <Row label="Travel" value={`${dt(travelFrom)} → ${dt(travelTo)}`} />
+          <Row label="Pax" value={`${paxCount} traveller${paxCount === 1 ? "" : "s"}`} />
+          {hotelRows.length > 0 && (
+            <Row label="Nights / Rooms" value={`${nights || "—"} / ${roomCount || "—"}`} />
+          )}
           {doc === "briefing" && <Row label="Sales exec" value={booking.sales_executive_name ?? "—"} />}
         </div>
       </section>
@@ -139,7 +186,7 @@ export default async function PrintDocPage({
         </h2>
         {rows.length === 0 ? (
           <p className="rounded border border-dashed border-slate-300 py-6 text-center text-sm text-slate-500">
-            No services found for this document.
+            Is document ke liye koi service nahi mili.
           </p>
         ) : (
           rows.map((r) => <ServiceBlock key={r.rowId} row={r} showCost={showCost} />)
@@ -177,10 +224,10 @@ export default async function PrintDocPage({
 
       <footer className="mt-8 border-t border-slate-200 pt-3 text-center text-xs text-slate-400">
         {doc === "confirmation"
-          ? "This is a computer generated confirmation."
+          ? "Ye ek computer generated confirmation hai."
           : doc === "briefing"
-            ? "Internal use only — do not share with the customer."
-            : "Please carry this document at check-in."}
+            ? "Internal use only — customer ko na dein."
+            : "Kripya check-in ke waqt ye document saath rakhein."}
       </footer>
     </PrintShell>
   );

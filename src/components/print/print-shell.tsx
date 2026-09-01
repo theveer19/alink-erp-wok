@@ -23,9 +23,11 @@ export function PrintShell({
     <div className="min-h-screen bg-slate-100 py-6 print:bg-white print:py-0">
       <style>{`
         @media print {
-          .no-print { display: none !important; }
+          /* Only the document prints — the app shell stays on screen. */
+          header, nav, .no-print { display: none !important; }
+          main { padding: 0 !important; margin: 0 !important; max-width: none !important; }
+          body { background: #fff !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
           @page { margin: 14mm; size: A4; }
-          body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
         }
       `}</style>
 

@@ -17,10 +17,11 @@ const emptyPax = (): Passenger => ({ name: "", mobile: "", email: "" });
 export default function NewBookingClient({
   bookerName,
   customers,
+  suppliers = [],
 }: {
   bookerName: string;
   customers: Customer[];
-  suppliers: SupplierFull[]; // kept for page compatibility, not used
+  suppliers?: SupplierFull[];
 }) {
   const router = useRouter();
   const params = useSearchParams();
@@ -46,18 +47,6 @@ export default function NewBookingClient({
   const [svcType, setSvcType] = useState<"" | "hotel" | "flight">("");
   const [scTouched, setScTouched] = useState(false);
 
-  // auto service charge = customer per-pax charge × pax count
-  const autoSc = useMemo(() => {
-    if (!customer) return 0;
-    const per =
-      svcType === "hotel"
-        ? Number(customer.hotel_service_charge || 0)
-        : svcType === "flight"
-          ? Number(customer.flight_service_charge || 0)
-          : 0;
-    return per * paxCount;
-  }, [customer, svcType, paxCount]);
-
   const [hotel, setHotel] = useState({
     hotel_name: "",
     checkin: "",
@@ -67,7 +56,28 @@ export default function NewBookingClient({
     rate: "",
     service_charge: "",
     rooms: "1",
+    supplier_id: "",
   });
+
+  // Flights charge per passenger, hotels per room — that is how the rate cards read.
+  const rooms = Math.max(Number(hotel.rooms) || 1, 1);
+
+  // The hotel itself is a supplier, so pick it from the master instead of retyping.
+  const hotelSuppliers = useMemo(
+    () =>
+      suppliers.filter(
+        (s) => !s.supplier_type || s.supplier_type.toLowerCase().includes("hotel"),
+      ),
+    [suppliers],
+  );
+  const pickedHotel = hotelSuppliers.find((s) => s.id === hotel.supplier_id);
+  const autoSc = useMemo(() => {
+    if (!customer) return 0;
+    if (svcType === "hotel") return Number(customer.hotel_service_charge || 0) * rooms;
+    if (svcType === "flight") return Number(customer.flight_service_charge || 0) * paxCount;
+    return 0;
+  }, [customer, svcType, paxCount, rooms]);
+
   const [flight, setFlight] = useState({
     origin: "",
     destination: "",
@@ -89,6 +99,15 @@ export default function NewBookingClient({
     else setFlight((f) => ({ ...f, service_charge: v }));
   };
 
+  // Nobody books into the past, and a stay is at least one night.
+  const today = new Date().toISOString().slice(0, 10);
+  const dayAfter = (d: string) => {
+    if (!d) return today;
+    const t = new Date(d);
+    t.setDate(t.getDate() + 1);
+    return t.toISOString().slice(0, 10);
+  };
+
   const nights = useMemo(() => {
     if (!hotel.checkin || !hotel.checkout) return "";
     const d = (new Date(hotel.checkout).getTime() - new Date(hotel.checkin).getTime()) / 86400000;
@@ -99,7 +118,7 @@ export default function NewBookingClient({
   // Flights are sold per passenger; hotels per room per night. Same field,
   // different multiplier — that is how the trade quotes them.
   const unitRate = Number((svcType === "hotel" ? hotel.rate : flight.rate) || 0);
-  const roomCount = Math.max(Number(hotel.rooms) || 1, 1);
+  const roomCount = rooms;
   const nightCount = Math.max(Number(nights) || 1, 1);
   const multiplier = svcType === "hotel" ? roomCount * nightCount : paxCount;
   const rateTotal = unitRate * multiplier;
@@ -153,6 +172,7 @@ export default function NewBookingClient({
             rate: String(h.sales_rate ?? h.customer_rate ?? ""),
             service_charge: String(h.customer_service_charge ?? ""),
             rooms: String(h.rooms ?? "1"),
+            supplier_id: String(h.supplier_id ?? ""),
           });
           setScTouched(true);
         } else if (f) {
@@ -234,6 +254,9 @@ export default function NewBookingClient({
               sales_rate: unitRate,
               customer_rate: rateTotal,
               customer_service_charge: scValue,
+              supplier_id: hotel.supplier_id || null,
+              supplier_name: pickedHotel?.name ?? null,
+              supplier_contact: pickedHotel?.mobile ?? pickedHotel?.contact_person ?? null,
             }
           : {
               flight_number: flight.flight_number,
@@ -305,6 +328,9 @@ export default function NewBookingClient({
               sales_rate: unitRate,
               customer_rate: rateTotal,
               customer_service_charge: scValue,
+              supplier_id: hotel.supplier_id || null,
+              supplier_name: pickedHotel?.name ?? null,
+              supplier_contact: pickedHotel?.mobile ?? pickedHotel?.contact_person ?? null,
             }
           : {
               flight_number: flight.flight_number,
@@ -491,11 +517,55 @@ export default function NewBookingClient({
           {svcType === "hotel" && (
             <Section title="Hotel Details">
               <div className="grid grid-cols-3 gap-4 p-5">
-                <Field label="Hotel Name" className="col-span-3">
-                  <Input value={hotel.hotel_name} onChange={(e) => setHotel({ ...hotel, hotel_name: e.target.value })} />
+                <Field label="Hotel (from supplier master)" className="col-span-3">
+                  <Select
+                    value={hotel.supplier_id || "manual"}
+                    onValueChange={(v) => {
+                      if (v === "manual") {
+                        setHotel({ ...hotel, supplier_id: "", hotel_name: "" });
+                        return;
+                      }
+                      const s = hotelSuppliers.find((x) => x.id === v);
+                      setHotel({ ...hotel, supplier_id: v, hotel_name: s?.name ?? "" });
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Choose a hotel" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {hotelSuppliers.map((s) => (
+                        <SelectItem key={s.id} value={s.id}>
+                          {s.name}
+                          {s.mobile ? ` · ${s.mobile}` : ""}
+                        </SelectItem>
+                      ))}
+                      <SelectItem value="manual">Not listed — type the name</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </Field>
+
+                {!hotel.supplier_id && (
+                  <Field label="Hotel Name" className="col-span-3">
+                    <Input
+                      value={hotel.hotel_name}
+                      onChange={(e) => setHotel({ ...hotel, hotel_name: e.target.value })}
+                      placeholder="Type the hotel name"
+                    />
+                  </Field>
+                )}
                 <Field label="Check-in Date">
-                  <Input type="date" value={hotel.checkin} onChange={(e) => setHotel({ ...hotel, checkin: e.target.value })} />
+                  <Input
+                    type="date"
+                    min={today}
+                    value={hotel.checkin}
+                    onChange={(e) => {
+                      const checkin = e.target.value;
+                      // Keep check-out after check-in without making the user redo it.
+                      const checkout =
+                        hotel.checkout && hotel.checkout > checkin ? hotel.checkout : dayAfter(checkin);
+                      setHotel({ ...hotel, checkin, checkout });
+                    }}
+                  />
                 </Field>
                 <Field label="Check-in Time">
                   <Input
@@ -508,7 +578,12 @@ export default function NewBookingClient({
                   <Input value={nights ? `${nights}N / ${days}D` : ""} readOnly placeholder="0N / 0D" />
                 </Field>
                 <Field label="Check-out Date">
-                  <Input type="date" value={hotel.checkout} onChange={(e) => setHotel({ ...hotel, checkout: e.target.value })} />
+                  <Input
+                    type="date"
+                    min={hotel.checkin ? dayAfter(hotel.checkin) : dayAfter(today)}
+                    value={hotel.checkout}
+                    onChange={(e) => setHotel({ ...hotel, checkout: e.target.value })}
+                  />
                 </Field>
                 <Field label="Check-out Time">
                   <Input
@@ -528,7 +603,7 @@ export default function NewBookingClient({
                 <Field label="Rate (₹) — per room / night">
                   <Input type="number" value={hotel.rate} onChange={(e) => setHotel({ ...hotel, rate: e.target.value })} />
                 </Field>
-                <Field label={`Service Charge (₹) — ${paxCount} pax auto`}>
+                <Field label={`Service Charge (₹) — ${roomCount} room${roomCount === 1 ? "" : "s"} auto`}>
                   <Input type="number" value={scValue} onChange={(e) => setSc(e.target.value)} />
                 </Field>
               </div>
@@ -549,7 +624,12 @@ export default function NewBookingClient({
                   <Input value={flight.flight_number} onChange={(e) => setFlight({ ...flight, flight_number: e.target.value })} />
                 </Field>
                 <Field label="Date of Travel">
-                  <Input type="date" value={flight.date} onChange={(e) => setFlight({ ...flight, date: e.target.value })} />
+                  <Input
+                    type="date"
+                    min={today}
+                    value={flight.date}
+                    onChange={(e) => setFlight({ ...flight, date: e.target.value })}
+                  />
                 </Field>
                 <Field label="Rate (₹) — per pax">
                   <Input type="number" value={flight.rate} onChange={(e) => setFlight({ ...flight, rate: e.target.value })} />

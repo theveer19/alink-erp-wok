@@ -192,7 +192,7 @@ export function InvoiceDetailView({ invoice, role }: { invoice: Invoice; role: R
                 const sub = !deep && it.description.startsWith("   ");
                 const head = !deep && !sub;
                 if (head) srNo += 1;
-                const blank = head && Number(it.amount) === 0;
+                const blank = Number(it.amount) === 0;
                 return (
                   <tr key={i} className="border-b border-slate-100">
                     <td className="py-2 align-top text-slate-500">{head ? srNo : ""}</td>
@@ -201,8 +201,8 @@ export function InvoiceDetailView({ invoice, role }: { invoice: Invoice; role: R
                         deep
                           ? "pl-10 text-slate-500"
                           : sub
-                            ? "pl-6 text-slate-700"
-                            : "font-medium text-slate-800"
+                            ? `pl-6 ${blank ? "text-slate-500" : "text-slate-700"}`
+                            : "font-semibold text-slate-800"
                       }`}
                     >
                       {it.description.trim()}

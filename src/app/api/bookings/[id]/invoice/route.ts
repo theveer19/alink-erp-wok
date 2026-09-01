@@ -56,25 +56,33 @@ function buildItems(booking: Booking): InvoiceItemT[] {
     const fare = round2(selling - serviceCharge - seat - meal - baggage);
     const feeNote = String(r.raw.fee_note ?? "").trim();
 
-    // Header line carries the trip facts; it holds no amount of its own.
-    const head: string[] = [r.title];
+    // The service is a heading; the facts sit under it as their own rows so the
+    // customer can read the stay at a glance instead of parsing one long line.
+    items.push({ description: r.title, qty: paxCount, rate: 0, amount: 0 });
+
+    const facts: [string, string][] = [];
     if (r.kind === "hotel") {
-      const inTime = String(r.raw.check_in_time ?? "14:00");
-      const outTime = String(r.raw.check_out_time ?? "11:00");
-      head.push(r.detail);
-      head.push(`Check-in ${r.date ?? "—"} ${inTime} → Check-out ${r.endDate ?? "—"} ${outTime}`);
-      if (r.city) head.push(r.city);
-      if (r.raw.confirmation_number) head.push(`Conf. ${String(r.raw.confirmation_number)}`);
+      facts.push(["Hotel", [r.address, r.city].filter(Boolean).join(", ") || r.title]);
+      facts.push(["Check-in", `${r.date ?? "—"} ${String(r.raw.check_in_time ?? "14:00")}`]);
+      facts.push(["Check-out", `${r.endDate ?? "—"} ${String(r.raw.check_out_time ?? "11:00")}`]);
+      facts.push(["Stay", r.detail]);
+      if (r.raw.room_type) facts.push(["Room type", String(r.raw.room_type)]);
+      if (r.raw.meal_plan) facts.push(["Meal plan", String(r.raw.meal_plan)]);
+      if (r.raw.confirmation_number) facts.push(["Confirmation no.", String(r.raw.confirmation_number)]);
     } else if (r.kind === "flight") {
-      head.push(r.address || r.detail);
-      head.push(`${r.date ?? "—"}${r.time ? ` ${r.time}` : ""}`);
-      if (r.raw.class) head.push(String(r.raw.class));
-      if (r.raw.pnr) head.push(`PNR ${String(r.raw.pnr)}`);
+      facts.push(["Sector", r.address || "—"]);
+      facts.push(["Departure", `${r.date ?? "—"}${r.time ? ` ${r.time}` : ""}`]);
+      facts.push(["Class", String(r.raw.class ?? r.detail)]);
+      if (r.raw.pnr) facts.push(["PNR", String(r.raw.pnr)]);
     } else {
-      head.push(r.detail);
-      if (r.date) head.push(r.date);
+      facts.push(["Details", r.detail]);
+      if (r.date) facts.push(["Date", r.date]);
     }
-    head.push(`${paxCount} pax`);
+    facts.push(["Travellers", String(paxCount)]);
+
+    for (const [label, value] of facts) {
+      items.push({ description: `   ${label}: ${value}`, qty: 0, rate: 0, amount: 0 });
+    }
 
     const fareParts = split(fare, paxCount);
     const scParts = split(serviceCharge, paxCount);
