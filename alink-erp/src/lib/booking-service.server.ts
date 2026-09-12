@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { HttpError } from "@/lib/auth";
 
+
 export async function getBookingOr404(supabase: SupabaseClient, id: string) {
   const { data, error } = await supabase.from("bookings").select("*").eq("id", id).single();
   if (error || !data) throw new HttpError(404, "Booking not found");

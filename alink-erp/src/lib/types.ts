@@ -111,6 +111,7 @@ export interface Booking {
   rates_locked: boolean;
   timeline: { at: string; by: string; action: string }[];
   invoice_id: string | null;
+  invoice_number?: string | null;
   created_at: string;
   financials?: BookingFinancialsT;
 }
@@ -153,6 +154,7 @@ export interface Payment {
   type: "customer" | "supplier";
   booking_id: string | null;
   invoice_id: string | null;
+  invoice_number?: string | null;
   supplier_id: string | null;
   amount: number;
   mode: string | null;

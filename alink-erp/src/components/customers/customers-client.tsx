@@ -17,7 +17,6 @@ import { toast } from "sonner";
 import type { Customer, Role } from "@/lib/types";
 
 type FormState = {
-  name: string;
   company: string;
   contact_person: string;
   mobile: string;
@@ -29,7 +28,6 @@ type FormState = {
 };
 
 const EMPTY: FormState = {
-  name: "",
   company: "",
   contact_person: "",
   mobile: "",
@@ -42,8 +40,8 @@ const EMPTY: FormState = {
 
 function toForm(c: Customer): FormState {
   return {
-    name: c.name ?? "",
-    company: c.company ?? "",
+    // Older records may only have `name` — fall back to it so nothing is lost.
+    company: c.company ?? c.name ?? "",
     contact_person: c.contact_person ?? "",
     mobile: c.mobile ?? "",
     email: c.email ?? "",
@@ -62,7 +60,6 @@ export default function CustomersClient({
   initial: Customer[];
 }) {
   const canEdit = ["admin", "super_admin", "sales", "operations"].includes(role);
-  const canDelete = role === "admin" || role === "super_admin";
 
   const [rows, setRows] = useState<Customer[]>(initial);
   const [q, setQ] = useState("");
@@ -112,8 +109,8 @@ export default function CustomersClient({
   };
 
   const save = async () => {
-    if (!form.name.trim()) {
-      toast.error("Customer name is required");
+    if (!form.company.trim()) {
+      toast.error("Company name is required");
       return;
     }
     setSaving(true);
@@ -122,7 +119,8 @@ export default function CustomersClient({
       const res = await fetch(url, {
         method: editId ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        // `name` still backs the database column; the company is the identity now.
+        body: JSON.stringify({ ...form, name: form.company.trim() }),
       });
       if (!res.ok) throw new Error((await res.json()).error);
       toast.success(editId ? "Customer updated" : "Customer added");
@@ -139,7 +137,7 @@ export default function CustomersClient({
     <div className="space-y-6">
       <PageHeader
         title="Customers"
-        subtitle="Master list of travellers and companies."
+        subtitle="Master list of companies and their billing details."
         actions={
           canEdit && (
             <Button onClick={openNew}>
@@ -164,8 +162,8 @@ export default function CustomersClient({
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-slate-500">
               <tr className="text-left">
-                <th className="px-5 py-2.5 font-medium">Name</th>
                 <th className="px-5 py-2.5 font-medium">Company</th>
+                <th className="px-5 py-2.5 font-medium">Contact Person</th>
                 <th className="px-5 py-2.5 font-medium">Mobile</th>
                 <th className="px-5 py-2.5 font-medium">Email</th>
                 <th className="px-5 py-2.5 font-medium">GST</th>
@@ -174,9 +172,9 @@ export default function CustomersClient({
             </thead>
             <tbody className="divide-y divide-slate-100">
               {rows.map((c) => (
-                <tr key={c.id} className="hover:bg-slate-50 transition-colors">
-                  <td className="px-5 py-3 font-medium text-slate-900">{c.name}</td>
-                  <td className="px-5 py-3 text-slate-500">{c.company || "—"}</td>
+                <tr key={c.id} className="transition-colors hover:bg-slate-50">
+                  <td className="px-5 py-3 font-medium text-slate-900">{c.company || c.name}</td>
+                  <td className="px-5 py-3 text-slate-500">{c.contact_person || "—"}</td>
                   <td className="px-5 py-3">{c.mobile || "—"}</td>
                   <td className="px-5 py-3 text-slate-500">{c.email || "—"}</td>
                   <td className="px-5 py-3 text-slate-500">{c.gst_number || "—"}</td>
@@ -218,11 +216,12 @@ export default function CustomersClient({
             <DialogTitle>{editId ? "Edit" : "New"} Customer</DialogTitle>
           </DialogHeader>
           <div className="grid grid-cols-2 gap-4">
-            <Field label="Customer Name">
-              <Input value={form.name} onChange={(e) => set("name", e.target.value)} />
-            </Field>
-            <Field label="Company Name">
-              <Input value={form.company} onChange={(e) => set("company", e.target.value)} />
+            <Field label="Company Name" className="col-span-2">
+              <Input
+                value={form.company}
+                onChange={(e) => set("company", e.target.value)}
+                placeholder="Billing name that appears on the invoice"
+              />
             </Field>
             <Field label="Contact Person">
               <Input value={form.contact_person} onChange={(e) => set("contact_person", e.target.value)} />
