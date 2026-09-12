@@ -44,6 +44,24 @@ you created. You should land on /dashboard showing live counts (0 to start).
 - `src/app/(protected)/` — auth-guarded shell + dashboard placeholder
 - `supabase/` — SQL migrations
 
+## Keeping Supabase awake
+Free-tier Supabase projects auto-pause after 7 days with no API activity.
+`.github/workflows/supabase-keepalive.yml` pings the project's REST API
+every 3 days so this never happens — it works independently of where (or
+whether) the app is deployed.
+
+One-time setup: in the GitHub repo, go to
+Settings -> Secrets and variables -> Actions and add two repository
+secrets, using the values from `.env.local`:
+- `SUPABASE_URL` = `NEXT_PUBLIC_SUPABASE_URL`
+- `SUPABASE_ANON_KEY` = `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+
+You can trigger it manually anytime from the Actions tab ("Run workflow")
+to confirm it's working.
+
+Once this app is deployed on Vercel, `vercel.json` + `src/app/api/cron/keep-alive/route.ts`
+give a second, app-level keep-alive that Vercel Cron can call directly.
+
 ## Roadmap
 - **Phase B** — tenant onboarding (agency signup → tenant + admin profile)
 - **Phase C** — modules in TS: customers/suppliers → bookings/services →
