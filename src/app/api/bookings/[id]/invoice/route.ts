@@ -90,7 +90,6 @@ function buildItems(booking: Booking): InvoiceItemT[] {
     const mealParts = split(meal, paxCount);
     const bagParts = split(baggage, paxCount);
 
-    items.push({ description: head.filter(Boolean).join(" · "), qty: paxCount, rate: 0, amount: 0 });
 
     for (let i = 0; i < paxCount; i += 1) {
       const who = paxNames[i] ?? `Passenger ${i + 1}`;
