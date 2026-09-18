@@ -15,5 +15,5 @@ export default async function UsersPage() {
     .select("id, tenant_id, email, name, role, active, created_at")
     .order("created_at", { ascending: true });
 
-  return <UsersView users={(data ?? []) as Profile[]} meId={profile.id} />;
+  return <UsersView users={(data ?? []) as Profile[]} meId={profile.id} myRole={profile.role} />;
 }

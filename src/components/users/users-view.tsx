@@ -12,10 +12,32 @@ const ROLES: { value: Role; label: string; hint: string }[] = [
   { value: "sales", label: "Sales", hint: "Creates bookings; cannot see cost" },
 ];
 
-export function UsersView({ users, meId }: { users: Profile[]; meId: string }) {
+export function UsersView({
+  users,
+  meId,
+  myRole,
+}: {
+  users: Profile[];
+  meId: string;
+  myRole: Role;
+}) {
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Roles this admin is allowed to grant (only a super admin can grant super_admin).
+  const grantableRoles = ROLES.filter((r) => r.value !== "super_admin" || myRole === "super_admin");
+
+  // --- Add user form state ---
+  const [form, setForm] = useState({
+    name: "",
+    email: "",
+    password: "",
+    role: "sales" as Role,
+  });
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [createOk, setCreateOk] = useState<string | null>(null);
 
   async function patch(id: string, body: Record<string, unknown>) {
     setBusy(id);
@@ -36,12 +58,109 @@ export function UsersView({ users, meId }: { users: Profile[]; meId: string }) {
     }
   }
 
+  async function createUser(e: React.FormEvent) {
+    e.preventDefault();
+    setCreating(true);
+    setCreateError(null);
+    setCreateOk(null);
+    try {
+      const res = await fetch("/api/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
+      });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j.error ?? "Could not create the user");
+      setCreateOk(`User "${form.name}" created. They can now log in with their email and password.`);
+      setForm({ name: "", email: "", password: "", role: "sales" });
+      router.refresh();
+    } catch (err) {
+      setCreateError(err instanceof Error ? err.message : "Could not create the user");
+    } finally {
+      setCreating(false);
+    }
+  }
+
   return (
     <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6">
       <h1 className="text-2xl font-semibold text-slate-800">Users</h1>
-      <p className="mb-5 text-sm text-slate-500">
-        Team roles and access. New users are invited from Supabase → Authentication → Invite user.
-      </p>
+      <p className="mb-5 text-sm text-slate-500">Team roles and access.</p>
+
+      {/* Add user */}
+      <div className="mb-6 rounded-lg border border-slate-200 p-4">
+        <h2 className="mb-3 text-sm font-semibold text-slate-700">Add a new user</h2>
+
+        {createError && (
+          <p className="mb-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            {createError}
+          </p>
+        )}
+        {createOk && (
+          <p className="mb-3 rounded border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+            {createOk}
+          </p>
+        )}
+
+        <form onSubmit={createUser} className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-600">Name</label>
+            <input
+              type="text"
+              required
+              value={form.name}
+              onChange={(e) => setForm({ ...form, name: e.target.value })}
+              className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+              placeholder="Full name"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-600">Email</label>
+            <input
+              type="email"
+              required
+              value={form.email}
+              onChange={(e) => setForm({ ...form, email: e.target.value })}
+              className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+              placeholder="name@example.com"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-600">Password</label>
+            <input
+              type="text"
+              required
+              minLength={6}
+              value={form.password}
+              onChange={(e) => setForm({ ...form, password: e.target.value })}
+              className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+              placeholder="At least 6 characters"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-600">Role</label>
+            <select
+              value={form.role}
+              onChange={(e) => setForm({ ...form, role: e.target.value as Role })}
+              className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+            >
+              {grantableRoles.map((r) => (
+                <option key={r.value} value={r.value}>
+                  {r.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="sm:col-span-2">
+            <button
+              type="submit"
+              disabled={creating}
+              className="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+            >
+              {creating ? "Creating…" : "Create user"}
+            </button>
+          </div>
+        </form>
+      </div>
 
       {error && (
         <p className="mb-4 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
@@ -73,7 +192,7 @@ export function UsersView({ users, meId }: { users: Profile[]; meId: string }) {
                     onChange={(e) => patch(u.id, { role: e.target.value })}
                     className="rounded border border-slate-300 px-2 py-1.5 text-sm focus:border-blue-500 focus:outline-none disabled:bg-slate-50 disabled:text-slate-400"
                   >
-                    {ROLES.map((r) => (
+                    {grantableRoles.map((r) => (
                       <option key={r.value} value={r.value}>
                         {r.label}
                       </option>
