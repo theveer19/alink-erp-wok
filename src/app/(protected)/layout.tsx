@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { getSessionProfile } from "@/lib/auth";
 import LogoutButton from "@/components/LogoutButton";
 import { Toaster } from "@/components/ui/sonner";
 import { NavLink } from "@/components/ui/nav-link";
@@ -26,22 +26,11 @@ const NAV: NavItem[] = [
 ];
 
 export default async function ProtectedLayout({ children }: { children: React.ReactNode }) {
-  const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // Shared (cached) with the page render — one auth + profile lookup per request.
+  const { user, profile } = await getSessionProfile();
   if (!user) redirect("/login");
 
-  // Profile carries tenant + role. RLS returns only the caller's own profile.
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("name, role, tenant_id, tenants(name)")
-    .eq("id", user.id)
-    .single();
-
-  const tenantName =
-    (profile?.tenants as unknown as { name: string } | null)?.name ?? "Workspace";
-
+  const tenantName = profile?.tenant_name ?? "Workspace";
   const isAdmin = profile?.role === "admin" || profile?.role === "super_admin";
   const items = NAV.filter((n) => !n.adminOnly || isAdmin);
 
